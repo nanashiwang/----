@@ -1,0 +1,21 @@
+llm:
+  provider: "openai"  # openai/anthropic/custom
+  api_base: "https://api.openai.com/v1"
+  api_key: "${LLM_API_KEY}"
+  model: "gpt-4"
+  temperature: 0.7
+  max_tokens: 2000
+
+tushare:
+  token: "${TUSHARE_TOKEN}"
+
+database:
+  mongodb:
+    uri: "mongodb://localhost:27017"
+    db_name: "quant_trading"
+  sqlite:
+    path: "data/sqlite/trading.db"
+
+logging:
+  level: "INFO"
+  file: "logs/app.log"
