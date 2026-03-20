@@ -1,0 +1,45 @@
+import { createRouter, createWebHistory } from 'vue-router'
+import { useAuthStore } from '../stores/auth'
+
+const routes = [
+  {
+    path: '/login',
+    name: 'Login',
+    component: () => import('../views/Login.vue'),
+    meta: { public: true },
+  },
+  {
+    path: '/',
+    component: () => import('../components/AppLayout.vue'),
+    children: [
+      { path: '', name: 'Dashboard', component: () => import('../views/Dashboard.vue') },
+      { path: 'settings/llm', name: 'LLMSettings', component: () => import('../views/settings/LLMSettings.vue'), meta: { admin: true } },
+      { path: 'settings/tushare', name: 'TushareSettings', component: () => import('../views/settings/TushareSettings.vue'), meta: { admin: true } },
+      { path: 'settings/database', name: 'DatabaseSettings', component: () => import('../views/settings/DatabaseSettings.vue'), meta: { admin: true } },
+      { path: 'agents', name: 'AgentList', component: () => import('../views/agents/AgentList.vue'), meta: { admin: true } },
+      { path: 'agents/:id', name: 'AgentEdit', component: () => import('../views/agents/AgentEdit.vue'), meta: { admin: true } },
+      { path: 'sources', name: 'SourceList', component: () => import('../views/sources/SourceList.vue'), meta: { admin: true } },
+      { path: 'recommend', name: 'RecommendBoard', component: () => import('../views/recommend/RecommendBoard.vue') },
+      { path: 'review', name: 'ReviewList', component: () => import('../views/review/ReviewList.vue') },
+      { path: 'knowledge', name: 'KnowledgeBase', component: () => import('../views/knowledge/KnowledgeBase.vue') },
+      { path: 'backtest', name: 'BacktestPanel', component: () => import('../views/backtest/BacktestPanel.vue') },
+      { path: 'trades', name: 'TradeList', component: () => import('../views/trades/TradeList.vue') },
+      { path: 'users', name: 'UserManage', component: () => import('../views/users/UserManage.vue'), meta: { admin: true } },
+    ],
+  },
+]
+
+const router = createRouter({
+  history: createWebHistory(),
+  routes,
+})
+
+router.beforeEach((to, from, next) => {
+  const auth = useAuthStore()
+  if (to.meta.public) return next()
+  if (!auth.token) return next('/login')
+  if (to.meta.admin && auth.user?.role !== 'admin') return next('/')
+  next()
+})
+
+export default router

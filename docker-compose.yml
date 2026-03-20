@@ -13,21 +13,30 @@ services:
       SQLITE_PATH: ${SQLITE_PATH:-data/sqlite/trading.db}
       LOG_FILE: ${LOG_FILE:-logs/app.log}
     ports:
-      - "8501:8501"
+      - "8000:8000"
     volumes:
       - ./data:/app/data
       - ./logs:/app/logs
     depends_on:
-      - mongo
+      mongo:
+        condition: service_healthy
 
   mongo:
     image: mongo:7
     container_name: quant-trading-mongo
     restart: unless-stopped
-    volumes:
-      - mongo_data:/data/db
+    environment:
+      MONGO_INITDB_DATABASE: ${MONGODB_DB_NAME:-quant_trading}
     ports:
       - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
 
 volumes:
   mongo_data:

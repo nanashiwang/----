@@ -13,6 +13,7 @@ class TestSQLiteClient(unittest.TestCase):
 
     def setUp(self):
         self.temp_db = tempfile.NamedTemporaryFile(delete=False, suffix='.db')
+        self.temp_db.close()
         self.client = SQLiteClient(self.temp_db.name)
 
     def tearDown(self):

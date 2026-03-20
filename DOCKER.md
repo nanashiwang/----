@@ -4,7 +4,7 @@
 
 项目已经补齐以下 Docker 资产：
 
-- `Dockerfile`：构建可运行的应用镜像，默认启动 Streamlit Web 界面
+- `Dockerfile`：构建可运行的应用镜像，默认启动 FastAPI 后端并托管前端静态资源
 - `docker-compose.yml`：本地一键拉起应用和 MongoDB
 - `.github/workflows/docker-publish.yml`：推送到 GitHub 后自动发布 GHCR 镜像
 
@@ -31,7 +31,7 @@ docker compose up -d --build
 启动后访问：
 
 ```text
-http://localhost:8501
+http://localhost:8000
 ```
 
 停止服务：
@@ -94,7 +94,7 @@ docker compose -f docker-compose.pull.yml down -v
 ```powershell
 docker run -d `
   --name "quant-trading" `
-  -p "8501:8501" `
+  -p "8000:8000" `
   --env-file ".env" `
   -e "MONGODB_URI=mongodb://host.docker.internal:27017" `
   -v "${PWD}/data:/app/data" `
@@ -111,12 +111,15 @@ docker run -d `
 - `LLM_API_KEY`
 - `LLM_API_BASE`
 - `LLM_MODEL`
+- `JWT_SECRET_KEY`
 - `TUSHARE_TOKEN`
 - `MONGODB_URI`
 - `MONGODB_DB_NAME`
 - `SQLITE_PATH`
 - `LOG_LEVEL`
 - `LOG_FILE`
+- `INIT_ADMIN_USERNAME`
+- `INIT_ADMIN_PASSWORD`
 
 `config/config.yaml` 现在支持 `${VAR}` 和 `${VAR:-default}` 格式，占位符会在启动时自动展开。
 

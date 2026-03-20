@@ -1,10 +1,20 @@
 import unittest
 import sys
 from pathlib import Path
+from unittest.mock import patch
+
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.llm.factory import LLMFactory
 from src.llm.base import BaseLLM
+
+
+class DummyLLM(BaseLLM):
+    def chat(self, messages, **kwargs):
+        return "ok"
+
+    def chat_with_tools(self, messages, tools, **kwargs):
+        return {"content": "ok", "tool_calls": []}
 
 
 class TestLLMFactory(unittest.TestCase):
@@ -12,21 +22,23 @@ class TestLLMFactory(unittest.TestCase):
 
     def test_create_openai_adapter(self):
         """测试创建OpenAI适配器"""
-        llm = LLMFactory.create(
-            "openai",
-            api_key="test-key",
-            api_base="https://api.openai.com/v1",
-            model="gpt-4"
-        )
+        with patch("src.llm.factory.OpenAIAdapter", return_value=DummyLLM()):
+            llm = LLMFactory.create(
+                "openai",
+                api_key="test-key",
+                api_base="https://api.openai.com/v1",
+                model="gpt-4"
+            )
         self.assertIsInstance(llm, BaseLLM)
 
     def test_create_anthropic_adapter(self):
         """测试创建Anthropic适配器"""
-        llm = LLMFactory.create(
-            "anthropic",
-            api_key="test-key",
-            model="claude-3-opus-20240229"
-        )
+        with patch("src.llm.factory.AnthropicAdapter", return_value=DummyLLM()):
+            llm = LLMFactory.create(
+                "anthropic",
+                api_key="test-key",
+                model="claude-3-opus-20240229"
+            )
         self.assertIsInstance(llm, BaseLLM)
 
     def test_unsupported_provider(self):

@@ -76,6 +76,64 @@ class SQLiteClient:
                 )
             """)
 
+            # 用户表
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS users (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    username VARCHAR(50) UNIQUE NOT NULL,
+                    password_hash VARCHAR(128) NOT NULL,
+                    role VARCHAR(20) DEFAULT 'user',
+                    is_active BOOLEAN DEFAULT 1,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    last_login TIMESTAMP
+                )
+            """)
+
+            # 系统配置表
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS system_settings (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    category VARCHAR(50) NOT NULL,
+                    key VARCHAR(100) NOT NULL,
+                    value TEXT,
+                    is_secret BOOLEAN DEFAULT 0,
+                    updated_by INTEGER REFERENCES users(id),
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(category, key)
+                )
+            """)
+
+            # Agent配置表
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS agent_configs (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    cluster VARCHAR(20) NOT NULL,
+                    agent_name VARCHAR(50) NOT NULL,
+                    display_name VARCHAR(100),
+                    system_prompt TEXT,
+                    llm_provider VARCHAR(20),
+                    llm_model VARCHAR(50),
+                    is_enabled BOOLEAN DEFAULT 1,
+                    parameters TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+
+            # 资讯源配置表
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS news_sources (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name VARCHAR(100) NOT NULL,
+                    type VARCHAR(20) NOT NULL,
+                    config TEXT NOT NULL,
+                    is_enabled BOOLEAN DEFAULT 1,
+                    fetch_interval INTEGER DEFAULT 3600,
+                    last_fetched TIMESTAMP,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+
             conn.commit()
 
     @contextmanager
