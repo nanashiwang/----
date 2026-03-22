@@ -1,4 +1,5 @@
 import json
+import re
 from datetime import datetime, timedelta
 from typing import Callable, Dict, List, Optional
 
@@ -12,6 +13,7 @@ from src.data.sources.tushare_api import TushareAPI
 SUPPORTED_DATA_TYPES = ("daily", "daily_basic", "moneyflow", "top_list")
 DEFAULT_DATA_TYPES = ("daily", "daily_basic", "moneyflow")
 SUPPORTED_SYNC_MODES = ("incremental", "backfill")
+TS_CODE_PATTERN = re.compile(r"^\d{6}\.(SH|SZ|BJ)$")
 
 
 def _parse_bool(value, default: bool = False) -> bool:
@@ -60,6 +62,15 @@ def _normalize_symbol(symbol: str) -> str:
 
 def _normalize_symbols(symbols: List[str]) -> List[str]:
     return [item for item in (_normalize_symbol(symbol) for symbol in symbols) if item]
+
+
+def _validate_symbols(symbols: List[str]) -> None:
+    invalid_symbols = [symbol for symbol in symbols if not TS_CODE_PATTERN.fullmatch(symbol)]
+    if invalid_symbols:
+        preview = "、".join(invalid_symbols[:5])
+        if len(invalid_symbols) > 5:
+            preview += " 等"
+        raise ValueError(f"股票代码格式不正确: {preview}。请使用 6 位代码或 000001.SZ 这类完整 ts_code")
 
 
 def _normalize_trade_date(value) -> str:
@@ -174,6 +185,7 @@ class MarketDataService:
         mode = _normalize_sync_mode(mode)
         if not symbols:
             raise ValueError("请先配置需要拉取的股票代码")
+        _validate_symbols(symbols)
         if not data_types:
             raise ValueError("请先选择至少一种拉取信息")
 
@@ -396,6 +408,7 @@ class MarketDataService:
         mode = _normalize_sync_mode(mode)
         explicit_start = _parse_sync_date(settings.get("start_date"))
         explicit_end = _parse_sync_date(settings.get("end_date"))
+        today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
 
         if mode == "backfill":
             if not explicit_start and not explicit_end:
@@ -408,6 +421,8 @@ class MarketDataService:
 
         if start_dt > end_dt:
             raise ValueError("拉取时间范围不正确：开始日期不能晚于结束日期")
+        if mode == "backfill" and (start_dt > today or end_dt > today):
+            raise ValueError(f"历史补数时间范围不能晚于今天（{today.strftime('%Y-%m-%d')}）")
         return start_dt, end_dt
 
     def _build_sync_tasks(

@@ -77,6 +77,24 @@
             placeholder="000001.SZ,600519.SH,159915.SZ"
           />
           <div class="settings-tip">支持英文逗号、中文逗号或换行分隔；如果只填 6 位代码，系统会自动补全为 `.SH/.SZ/.BJ`。</div>
+          <el-alert
+            v-if="symbolValidation.invalidSymbols.length"
+            class="settings-alert"
+            type="error"
+            show-icon
+            :closable="false"
+            :title="`发现 ${symbolValidation.invalidSymbols.length} 个股票代码格式不正确`"
+            :description="`请改为 6 位数字，或使用 000001.SZ / 600519.SH / 430047.BJ 这类完整代码。当前异常值：${symbolValidation.invalidSymbols.join('、')}`"
+          />
+          <el-alert
+            v-else-if="symbolValidation.normalizedPreview"
+            class="settings-alert"
+            type="info"
+            show-icon
+            :closable="false"
+            title="股票代码会按交易所规则自动规范化"
+            :description="`保存后将按以下代码执行拉取：${symbolValidation.normalizedPreview}`"
+          />
         </el-form-item>
 
         <el-form-item label="拉取信息">
@@ -132,6 +150,15 @@
             </div>
           </div>
           <div class="settings-tip">历史补数只读取这里的日期区间；日常增量会忽略这个范围，改为按“增量天数”滚动同步。</div>
+          <el-alert
+            v-if="dateRangeValidation.hasFutureDate"
+            class="settings-alert"
+            type="warning"
+            show-icon
+            :closable="false"
+            title="历史补数范围包含未来日期"
+            :description="`当前服务器允许的最晚日期是 ${todayDateLabel}，请把开始或结束日期调整到今天及以前。`"
+          />
         </el-form-item>
 
         <div class="settings-grid">
@@ -287,8 +314,11 @@ const tokenPlaceholder = ref('Tushare Pro Token')
 
 let syncPollingTimer = null
 
+const todayDateLabel = formatDate(new Date())
 const isSyncRunning = computed(() => syncStatus.value.status === 'running')
 const syncActionLabel = computed(() => `立即拉取（${syncModeLabel(syncMode.value)}）`)
+const symbolValidation = computed(() => buildSymbolValidation(marketForm.value.symbols))
+const dateRangeValidation = computed(() => buildDateRangeValidation(syncDateRange.value))
 const syncStatusLabel = computed(() => {
   const labelMap = {
     idle: '待执行',
@@ -428,6 +458,59 @@ function normalizeSymbolsText(value) {
     .map(item => normalizeSymbol(item))
     .filter(Boolean)
     .join(',')
+}
+
+function splitSymbols(value) {
+  return String(value || '')
+    .replaceAll('\n', ',')
+    .replaceAll('，', ',')
+    .split(',')
+    .map(item => item.trim())
+    .filter(Boolean)
+}
+
+function isValidSymbol(symbol) {
+  return /^\d{6}$/.test(symbol) || /^\d{6}\.(SH|SZ|BJ)$/i.test(symbol)
+}
+
+function buildSymbolValidation(value) {
+  const rawSymbols = splitSymbols(value)
+  const invalidSymbols = rawSymbols
+    .map(item => item.toUpperCase())
+    .filter(item => !isValidSymbol(item))
+  const normalizedSymbols = rawSymbols.map(item => normalizeSymbol(item)).filter(Boolean)
+  const rawUpper = rawSymbols.map(item => item.toUpperCase()).join(',')
+  const normalizedPreview = normalizedSymbols.join(',')
+
+  return {
+    invalidSymbols,
+    normalizedPreview: invalidSymbols.length === 0 && normalizedPreview && normalizedPreview !== rawUpper
+      ? normalizedPreview
+      : '',
+  }
+}
+
+function buildDateRangeValidation(range) {
+  const [startDate = '', endDate = ''] = range || []
+  const today = todayDateLabel
+  return {
+    hasFutureDate: Boolean((startDate && startDate > today) || (endDate && endDate > today)),
+  }
+}
+
+function validateMarketSettings({ forSync = false } = {}) {
+  if (symbolValidation.value.invalidSymbols.length) {
+    ElMessage.error('股票池里存在格式不正确的代码，请先修正后再保存或同步')
+    return false
+  }
+
+  if (dateRangeValidation.value.hasFutureDate) {
+    const action = forSync ? '执行同步' : '保存策略'
+    ElMessage.warning(`历史补数范围不能晚于今天（${todayDateLabel}），请调整日期后再${action}`)
+    return false
+  }
+
+  return true
 }
 
 function buildConnectionSettingsPayload() {
@@ -594,6 +677,10 @@ async function saveConnectionSettings() {
 }
 
 async function saveMarketSettings(showMessage = true) {
+  if (!validateMarketSettings({ forSync: false })) {
+    return
+  }
+
   marketSaving.value = true
   try {
     await updateSettings('market_data', buildMarketSettingsPayload())
@@ -631,6 +718,10 @@ async function triggerSync(mode = syncMode.value) {
 
   if (mode === 'backfill' && (!syncDateRange.value || syncDateRange.value.length !== 2)) {
     ElMessage.warning('执行历史补数前，请先选择完整的时间范围')
+    return
+  }
+
+  if (!validateMarketSettings({ forSync: true })) {
     return
   }
 
@@ -698,6 +789,10 @@ onBeforeUnmount(() => {
   color: var(--el-text-color-secondary);
   font-size: 13px;
   line-height: 1.7;
+}
+
+.settings-alert {
+  margin-top: 12px;
 }
 
 .checkbox-grid {

@@ -1,6 +1,7 @@
 import sys
 import tempfile
 import unittest
+from datetime import datetime, timedelta
 from pathlib import Path
 from unittest.mock import patch
 
@@ -188,3 +189,28 @@ class TestMarketDataService(unittest.TestCase):
         self.assertEqual(result["status"], "partial")
         self.assertEqual(len(result["errors"]), 1)
         self.assertIn("600519.SH", result["errors"][0])
+
+    def test_sync_configured_data_rejects_invalid_symbols(self):
+        self.settings.update_settings(
+            "market_data",
+            [
+                {"key": "symbols", "value": "ABC123", "is_secret": False},
+            ],
+        )
+
+        with self.assertRaisesRegex(ValueError, "股票代码格式不正确"):
+            self.service.sync_configured_data()
+
+    def test_backfill_rejects_future_date_range(self):
+        start_date = (datetime.now() - timedelta(days=5)).strftime("%Y-%m-%d")
+        tomorrow = (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d")
+        self.settings.update_settings(
+            "market_data",
+            [
+                {"key": "start_date", "value": start_date, "is_secret": False},
+                {"key": "end_date", "value": tomorrow, "is_secret": False},
+            ],
+        )
+
+        with self.assertRaisesRegex(ValueError, "不能晚于今天"):
+            self.service.sync_configured_data(mode="backfill")
