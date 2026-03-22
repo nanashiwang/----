@@ -35,7 +35,10 @@ async def create_user(data: AdminUserCreate, _=Depends(require_admin)):
     if svc.get_by_username(data.username):
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="用户名已存在")
 
-    user_id = svc.create_user(data.username, hash_password(data.password), data.role)
+    try:
+        user_id = svc.create_user(data.username, hash_password(data.password), data.role)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     return UserOut(id=user_id, username=data.username, role=data.role, is_active=True)
 
 

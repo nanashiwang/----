@@ -5,54 +5,198 @@
       <div class="shape shape-2"></div>
       <div class="shape shape-3"></div>
     </div>
+
     <div class="login-card">
       <div class="login-brand">
-        <div class="brand-icon">Q</div>
+        <div class="brand-icon">QA</div>
         <h2>QuantAgent</h2>
-        <p class="brand-sub">Multi-Agent Quantitative Trading Platform</p>
+        <p class="brand-sub">量化交易协同控制台</p>
       </div>
-      <el-form :model="form" @submit.prevent="handleLogin" label-position="top" class="login-form">
+
+      <div class="mode-switch">
+        <button
+          type="button"
+          class="mode-switch__item"
+          :class="{ 'is-active': mode === 'login' }"
+          @click="switchMode('login')"
+        >
+          登录
+        </button>
+        <button
+          type="button"
+          class="mode-switch__item"
+          :class="{ 'is-active': mode === 'register' }"
+          @click="switchMode('register')"
+        >
+          注册
+        </button>
+      </div>
+
+      <div class="mode-copy">
+        <h3>{{ mode === 'login' ? '欢迎回来' : '创建新账号' }}</h3>
+        <p>
+          {{
+            mode === 'login'
+              ? '登录后可继续查看推荐、回测和行情数据。'
+              : '注册成功后会自动登录，并直接进入个人中心，方便你修改用户名和密码。'
+          }}
+        </p>
+      </div>
+
+      <el-form
+        v-if="mode === 'login'"
+        :model="loginForm"
+        @submit.prevent="handleLogin"
+        label-position="top"
+        class="login-form"
+      >
         <el-form-item>
-          <el-input v-model="form.username" placeholder="Username" size="large" :prefix-icon="User" />
+          <el-input v-model="loginForm.username" placeholder="请输入用户名" size="large" :prefix-icon="User" />
         </el-form-item>
         <el-form-item>
-          <el-input v-model="form.password" type="password" placeholder="Password" size="large" :prefix-icon="Lock" show-password />
+          <el-input
+            v-model="loginForm.password"
+            type="password"
+            placeholder="请输入密码"
+            size="large"
+            :prefix-icon="Lock"
+            show-password
+          />
         </el-form-item>
         <el-button type="primary" native-type="submit" :loading="loading" size="large" class="login-btn">
-          {{ loading ? '...' : 'Sign In' }}
+          {{ loading ? '登录中...' : '立即登录' }}
         </el-button>
       </el-form>
-      <p class="hint">Configure INIT_ADMIN_USERNAME / INIT_ADMIN_PASSWORD env vars for first run</p>
+
+      <el-form
+        v-else
+        :model="registerForm"
+        @submit.prevent="handleRegister"
+        label-position="top"
+        class="login-form"
+      >
+        <el-form-item>
+          <el-input v-model="registerForm.username" placeholder="请输入用户名" size="large" :prefix-icon="User" />
+        </el-form-item>
+        <el-form-item>
+          <el-input
+            v-model="registerForm.password"
+            type="password"
+            placeholder="请设置密码，至少 6 位"
+            size="large"
+            :prefix-icon="Lock"
+            show-password
+          />
+        </el-form-item>
+        <el-form-item>
+          <el-input
+            v-model="registerForm.confirmPassword"
+            type="password"
+            placeholder="请再次输入密码"
+            size="large"
+            :prefix-icon="Lock"
+            show-password
+          />
+        </el-form-item>
+        <el-button type="primary" native-type="submit" :loading="loading" size="large" class="login-btn">
+          {{ loading ? '注册中...' : '注册并进入系统' }}
+        </el-button>
+      </el-form>
+
+      <p class="hint">
+        {{
+          mode === 'login'
+            ? '没有账号？点击上方“注册”即可创建普通用户。'
+            : '注册后的账号默认为普通用户，如需管理员权限请由管理员在后台授权。'
+        }}
+      </p>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, shallowRef } from 'vue'
+import { ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { useAuthStore } from '../stores/auth'
-import { login } from '../api/auth'
 import { ElMessage } from 'element-plus'
-import { User, Lock } from '@element-plus/icons-vue'
+import { Lock, User } from '@element-plus/icons-vue'
+
+import { login, register as registerUser } from '../api/auth'
+import { useAuthStore } from '../stores/auth'
 
 const router = useRouter()
 const auth = useAuthStore()
+
+const mode = ref('login')
 const loading = ref(false)
-const form = ref({ username: '', password: '' })
+const loginForm = ref({ username: '', password: '' })
+const registerForm = ref({ username: '', password: '', confirmPassword: '' })
+
+function switchMode(nextMode) {
+  mode.value = nextMode
+}
+
+function resetRegisterForm() {
+  registerForm.value = { username: '', password: '', confirmPassword: '' }
+}
 
 async function handleLogin() {
-  if (!form.value.username || !form.value.password) {
-    ElMessage.warning('Please enter username and password')
+  if (!loginForm.value.username.trim() || !loginForm.value.password) {
+    ElMessage.warning('请输入用户名和密码')
     return
   }
+
   loading.value = true
   try {
-    const res = await login(form.value)
+    const res = await login({
+      username: loginForm.value.username.trim(),
+      password: loginForm.value.password,
+    })
     auth.setAuth(res.access_token, res.user)
-    ElMessage.success('Welcome back!')
+    ElMessage.success('登录成功')
     router.push('/')
   } catch (e) {
-    ElMessage.error(e.response?.data?.detail || 'Login failed')
+    ElMessage.error(e.response?.data?.detail || '登录失败')
+  } finally {
+    loading.value = false
+  }
+}
+
+async function handleRegister() {
+  const username = registerForm.value.username.trim()
+  const password = registerForm.value.password
+  const confirmPassword = registerForm.value.confirmPassword
+
+  if (!username) {
+    ElMessage.warning('请输入用户名')
+    return
+  }
+
+  if (!password) {
+    ElMessage.warning('请输入密码')
+    return
+  }
+
+  if (password.length < 6) {
+    ElMessage.warning('密码长度不能少于 6 位')
+    return
+  }
+
+  if (password !== confirmPassword) {
+    ElMessage.warning('两次输入的密码不一致')
+    return
+  }
+
+  loading.value = true
+  try {
+    await registerUser({ username, password })
+    const loginRes = await login({ username, password })
+    auth.setAuth(loginRes.access_token, loginRes.user)
+    resetRegisterForm()
+    loginForm.value = { username, password: '' }
+    ElMessage.success('注册成功，已自动登录')
+    router.push('/profile')
+  } catch (e) {
+    ElMessage.error(e.response?.data?.detail || '注册失败')
   } finally {
     loading.value = false
   }
@@ -61,57 +205,203 @@ async function handleLogin() {
 
 <style scoped>
 .login-page {
-  display: flex; justify-content: center; align-items: center;
-  height: 100vh; position: relative; overflow: hidden;
-  background: #0f0f1a;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  overflow: hidden;
+  background: #08121d;
 }
-.login-bg-shapes { position: absolute; inset: 0; z-index: 0; }
+
+.login-bg-shapes {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+}
+
 .shape {
-  position: absolute; border-radius: 50%; filter: blur(80px); opacity: 0.4;
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(88px);
+  opacity: 0.46;
   animation: float 20s ease-in-out infinite;
 }
-.shape-1 { width: 500px; height: 500px; background: #6366f1; top: -100px; right: -100px; }
-.shape-2 { width: 400px; height: 400px; background: #ec4899; bottom: -50px; left: -100px; animation-delay: -7s; }
-.shape-3 { width: 300px; height: 300px; background: #06b6d4; top: 50%; left: 50%; animation-delay: -14s; }
+
+.shape-1 {
+  top: -120px;
+  right: -90px;
+  width: 480px;
+  height: 480px;
+  background: #2a7fff;
+}
+
+.shape-2 {
+  left: -90px;
+  bottom: -80px;
+  width: 360px;
+  height: 360px;
+  background: #17b897;
+  animation-delay: -7s;
+}
+
+.shape-3 {
+  top: 46%;
+  left: 48%;
+  width: 280px;
+  height: 280px;
+  background: #f3b356;
+  animation-delay: -12s;
+}
 
 @keyframes float {
-  0%, 100% { transform: translate(0, 0) scale(1); }
-  33% { transform: translate(30px, -30px) scale(1.05); }
-  66% { transform: translate(-20px, 20px) scale(0.95); }
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+
+  33% {
+    transform: translate(28px, -24px) scale(1.04);
+  }
+
+  66% {
+    transform: translate(-16px, 18px) scale(0.96);
+  }
 }
 
 .login-card {
-  position: relative; z-index: 1;
-  background: rgba(255, 255, 255, 0.05);
-  backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  padding: 48px 40px; border-radius: 24px; width: 420px;
-  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.5);
+  position: relative;
+  z-index: 1;
+  width: min(460px, calc(100vw - 32px));
+  padding: 42px 36px 30px;
+  border-radius: 28px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.08);
+  box-shadow: 0 28px 84px rgba(0, 0, 0, 0.36);
+  backdrop-filter: blur(26px);
+  -webkit-backdrop-filter: blur(26px);
 }
-.login-brand { text-align: center; margin-bottom: 36px; }
+
+.login-brand {
+  margin-bottom: 24px;
+  text-align: center;
+}
+
 .brand-icon {
-  width: 56px; height: 56px; border-radius: 16px; margin: 0 auto 16px;
-  background: linear-gradient(135deg, #6366f1, #a855f7);
-  display: flex; align-items: center; justify-content: center;
-  font-size: 24px; font-weight: 800; color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 60px;
+  height: 60px;
+  margin: 0 auto 16px;
+  border-radius: 18px;
+  background: linear-gradient(135deg, #2a7fff, #17b897);
+  color: #fff;
+  font-size: 24px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
 }
-.login-brand h2 { color: #fff; font-size: 24px; margin: 0 0 4px; letter-spacing: -0.5px; }
-.brand-sub { color: rgba(255, 255, 255, 0.45); font-size: 13px; margin: 0; }
+
+.login-brand h2 {
+  margin: 0 0 6px;
+  color: #f9fcff;
+  font-size: 26px;
+  letter-spacing: -0.03em;
+}
+
+.brand-sub {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.62);
+  font-size: 13px;
+}
+
+.mode-switch {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  padding: 6px;
+  margin-bottom: 18px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.mode-switch__item {
+  height: 42px;
+  border: none;
+  border-radius: 14px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.mode-switch__item.is-active {
+  background: linear-gradient(135deg, rgba(42, 127, 255, 0.92), rgba(23, 184, 151, 0.88));
+  color: #fff;
+  box-shadow: 0 12px 24px rgba(23, 184, 151, 0.18);
+}
+
+.mode-copy {
+  margin-bottom: 20px;
+}
+
+.mode-copy h3 {
+  margin: 0 0 8px;
+  color: #f7fbff;
+  font-size: 20px;
+}
+
+.mode-copy p {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.62);
+  line-height: 1.7;
+  font-size: 13px;
+}
 
 .login-form :deep(.el-input__wrapper) {
-  background: rgba(255, 255, 255, 0.06); border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 12px; box-shadow: none !important;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.07);
+  box-shadow: none !important;
 }
-.login-form :deep(.el-input__inner) { color: #fff; }
-.login-form :deep(.el-input__inner::placeholder) { color: rgba(255, 255, 255, 0.35); }
-.login-form :deep(.el-input__prefix .el-icon) { color: rgba(255, 255, 255, 0.4); }
+
+.login-form :deep(.el-input__inner) {
+  color: #fff;
+}
+
+.login-form :deep(.el-input__inner::placeholder) {
+  color: rgba(255, 255, 255, 0.34);
+}
+
+.login-form :deep(.el-input__prefix .el-icon),
+.login-form :deep(.el-input__suffix .el-icon) {
+  color: rgba(255, 255, 255, 0.42);
+}
 
 .login-btn {
-  width: 100%; border-radius: 12px; font-size: 15px; font-weight: 600; letter-spacing: 0.5px;
-  background: linear-gradient(135deg, #6366f1, #a855f7); border: none; height: 48px;
-  transition: transform 0.2s, box-shadow 0.2s;
+  width: 100%;
+  height: 48px;
+  border: none;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #2a7fff, #17b897);
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
-.login-btn:hover { transform: translateY(-1px); box-shadow: 0 8px 24px rgba(99, 102, 241, 0.4); }
 
-.hint { text-align: center; color: rgba(255, 255, 255, 0.3); font-size: 11px; margin-top: 20px; }
+.login-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 12px 30px rgba(23, 184, 151, 0.26);
+}
+
+.hint {
+  margin: 18px 0 0;
+  color: rgba(255, 255, 255, 0.42);
+  text-align: center;
+  font-size: 12px;
+  line-height: 1.7;
+}
 </style>

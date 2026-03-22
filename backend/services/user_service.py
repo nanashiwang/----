@@ -12,17 +12,23 @@ class UserService:
         self.db = db
 
     def create_user(self, username: str, password_hash: str, role: str = "user") -> int:
+        normalized_username = str(username or "").strip()
+        if not normalized_username:
+            raise ValueError("用户名不能为空")
         with self.db.get_connection() as conn:
             cursor = conn.execute(
                 "INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)",
-                (username, password_hash, role)
+                (normalized_username, password_hash, role)
             )
             conn.commit()
             return cursor.lastrowid
 
     def get_by_username(self, username: str) -> Optional[Dict]:
+        normalized_username = str(username or "").strip()
+        if not normalized_username:
+            return None
         with self.db.get_connection() as conn:
-            row = conn.execute("SELECT * FROM users WHERE username = ?", (username,)).fetchone()
+            row = conn.execute("SELECT * FROM users WHERE username = ?", (normalized_username,)).fetchone()
             return dict(row) if row else None
 
     def get_by_id(self, user_id: int) -> Optional[Dict]:
