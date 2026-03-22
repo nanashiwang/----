@@ -1,29 +1,50 @@
 <template>
-  <el-card header="Tushare 配置">
-    <el-form :model="form" label-width="120px">
-      <el-form-item label="Token">
-        <el-input v-model="form.token" type="password" show-password placeholder="Tushare Pro Token" />
-      </el-form-item>
-      <el-form-item>
-        <el-button type="primary" @click="save" :loading="saving">保存</el-button>
-        <el-button @click="test" :loading="testing">测试连接</el-button>
-      </el-form-item>
-    </el-form>
-    <el-alert
-      v-if="testResult"
-      :title="testResult.message"
-      :type="testResult.success ? 'success' : 'error'"
-      show-icon
-      style="margin-top: 12px"
-    />
-  </el-card>
+  <div class="page-shell">
+    <section class="page-hero page-hero--compact">
+      <span class="page-eyebrow">Data Source Access</span>
+      <h2>Tushare 配置</h2>
+      <p>维护行情与基础数据授权 Token，建议保存后立刻做一次连接验证。</p>
+    </section>
+
+    <el-card class="panel-card" shadow="never">
+      <template #header>
+        <div class="panel-toolbar">
+          <div class="panel-toolbar__copy">
+            <div class="panel-title">数据授权参数</div>
+            <div class="panel-subtitle">该配置会影响行情拉取、指标计算与部分策略输入。</div>
+          </div>
+          <span class="section-tag">Tushare Pro</span>
+        </div>
+      </template>
+
+      <el-form :model="form" label-width="120px" class="settings-form">
+        <el-form-item label="Token">
+          <el-input v-model="form.token" type="password" show-password placeholder="Tushare Pro Token" />
+        </el-form-item>
+
+        <el-form-item>
+          <div class="settings-actions">
+            <el-button type="primary" @click="save" :loading="saving">保存配置</el-button>
+            <el-button @click="test" :loading="testing">测试连接</el-button>
+          </div>
+        </el-form-item>
+      </el-form>
+
+      <el-alert
+        v-if="testResult"
+        :title="testResult.message"
+        :type="testResult.success ? 'success' : 'error'"
+        show-icon
+      />
+    </el-card>
+  </div>
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 
-import { getSettings, updateSettings, testTushare } from '../../api/settings'
+import { getSettings, testTushare, updateSettings } from '../../api/settings'
 
 const form = ref({ token: '' })
 const saving = ref(false)
@@ -37,7 +58,7 @@ function getErrorMessage(error, fallback) {
 onMounted(async () => {
   try {
     const res = await getSettings('tushare')
-    const setting = res.settings.find(s => s.key === 'token')
+    const setting = res.settings.find(item => item.key === 'token')
     if (setting) form.value.token = setting.value
   } catch {}
 })
@@ -68,3 +89,15 @@ async function test() {
   }
 }
 </script>
+
+<style scoped>
+.settings-form {
+  max-width: 920px;
+}
+
+.settings-actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+</style>
