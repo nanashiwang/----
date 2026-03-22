@@ -31,19 +31,33 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
-import { getSettings, updateSettings, testLLM } from '../../api/settings'
 import { ElMessage } from 'element-plus'
 
-const form = ref({ provider: 'openai', api_base: '', api_key: '', model: 'gpt-4', temperature: 0.7 })
+import { getSettings, updateSettings, testLLM } from '../../api/settings'
+
+const form = ref({
+  provider: 'openai',
+  api_base: '',
+  api_key: '',
+  model: 'gpt-4',
+  temperature: 0.7,
+})
 const saving = ref(false)
 const testing = ref(false)
 const testResult = ref(null)
 
+function getErrorMessage(error, fallback) {
+  return error?.response?.data?.detail || error?.response?.data?.message || error?.message || fallback
+}
+
 onMounted(async () => {
   try {
     const res = await getSettings('llm')
-    for (const s of res.settings) {
-      if (s.key in form.value) form.value[s.key] = s.key === 'temperature' ? parseFloat(s.value) : s.value
+    for (const setting of res.settings) {
+      if (!(setting.key in form.value)) continue
+      form.value[setting.key] = setting.key === 'temperature'
+        ? parseFloat(setting.value)
+        : setting.value
     }
   } catch {}
 })
@@ -53,12 +67,17 @@ async function save() {
   try {
     await updateSettings('llm', {
       settings: Object.entries(form.value).map(([key, value]) => ({
-        key, value: String(value), is_secret: key === 'api_key'
-      }))
+        key,
+        value: String(value),
+        is_secret: key === 'api_key',
+      })),
     })
     ElMessage.success('已保存')
-  } catch { ElMessage.error('保存失败') }
-  finally { saving.value = false }
+  } catch (error) {
+    ElMessage.error(getErrorMessage(error, '保存失败'))
+  } finally {
+    saving.value = false
+  }
 }
 
 async function test() {
@@ -66,7 +85,10 @@ async function test() {
   testResult.value = null
   try {
     testResult.value = await testLLM(form.value)
-  } catch { testResult.value = { success: false, message: '请求失败' } }
-  finally { testing.value = false }
+  } catch (error) {
+    testResult.value = { success: false, message: getErrorMessage(error, '请求失败') }
+  } finally {
+    testing.value = false
+  }
 }
 </script>

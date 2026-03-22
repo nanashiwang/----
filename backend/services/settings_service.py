@@ -29,9 +29,21 @@ class SettingsService:
             ).fetchone()
             return row["value"] if row else None
 
+    @staticmethod
+    def _is_masked_secret(value: Optional[str]) -> bool:
+        return isinstance(value, str) and "****" in value
+
     def update_settings(self, category: str, items: List[Dict], user_id: int = None):
         with self.db.get_connection() as conn:
             for item in items:
+                value = item["value"]
+                if item.get("is_secret") and self._is_masked_secret(value):
+                    existing = conn.execute(
+                        "SELECT value FROM system_settings WHERE category = ? AND key = ?",
+                        (category, item["key"])
+                    ).fetchone()
+                    value = existing["value"] if existing else value
+
                 conn.execute("""
                     INSERT INTO system_settings (category, key, value, is_secret, updated_by, updated_at)
                     VALUES (?, ?, ?, ?, ?, ?)
@@ -40,7 +52,7 @@ class SettingsService:
                         is_secret = excluded.is_secret,
                         updated_by = excluded.updated_by,
                         updated_at = excluded.updated_at
-                """, (category, item["key"], item["value"], item.get("is_secret", False),
+                """, (category, item["key"], value, item.get("is_secret", False),
                       user_id, datetime.now()))
             conn.commit()
 
