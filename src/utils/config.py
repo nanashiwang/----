@@ -24,7 +24,9 @@ class TushareConfig(BaseSettings):
 
 class MarketDataConfig(BaseSettings):
     symbols: str = ""
-    data_types: str = "daily,daily_basic,moneyflow"
+    data_types: str = "daily,daily_basic,moneyflow,index_daily"
+    benchmark_index_codes: str = "000001.SH,399001.SZ,399006.SZ,000300.SH,000905.SH,000852.SH,000688.SH"
+    primary_benchmark: str = "000300.SH"
     fetch_interval: int = 3600
     history_days: int = 30
     start_date: str = ""

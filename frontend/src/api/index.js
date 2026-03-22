@@ -23,6 +23,9 @@ export const getRecommendDates = () => request.get('/recommend/dates')
 
 export const getReviews = (params) => request.get('/review', { params })
 
+export const getMLExperimentOptions = () => request.get('/ml/options')
+export const runMLExperiment = (data) => request.post('/ml/experiments/run', data)
+
 export const getHotKnowledge = (params) => request.get('/knowledge/hot', { params })
 export const getColdKnowledge = (agent) => request.get(`/knowledge/cold/${agent}`)
 export const deleteHotKnowledge = (id) => request.delete(`/knowledge/hot/${id}`)
@@ -39,3 +42,4 @@ export const getUsers = () => request.get('/users')
 export const createUser = (data) => request.post('/users', data)
 export const updateUser = (id, data) => request.put(`/users/${id}`, data)
 export const deleteUser = (id) => request.delete(`/users/${id}`)
+export const getAdminUsageLogs = (params) => request.get('/admin/logs', { params })

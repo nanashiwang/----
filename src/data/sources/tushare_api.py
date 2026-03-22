@@ -44,6 +44,9 @@ class TushareAPI:
             fields="ts_code,trade_date,turnover_rate,volume_ratio,pe,pb",
         )
 
+    def get_index_daily(self, ts_code: str, start_date: str, end_date: str) -> pd.DataFrame:
+        return self.pro.index_daily(ts_code=ts_code, start_date=start_date, end_date=end_date)
+
     def get_news(self, start_date: str, end_date: str, src: str = "sina") -> pd.DataFrame:
         return self.pro.news(start_date=start_date, end_date=end_date, src=src)
 

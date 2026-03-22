@@ -266,6 +266,79 @@
           />
         </el-form-item>
 
+        <el-form-item label="大盘基准">
+          <div class="benchmark-panel">
+            <div class="benchmark-panel__header">
+              <div>
+                <div class="benchmark-panel__title">A 股基准指数同步</div>
+                <div class="benchmark-panel__desc">
+                  这些指数会一并拉取到本地，用来做大盘对比、超额收益计算和机器学习训练时的基准参考。
+                </div>
+              </div>
+
+              <el-select
+                v-model="marketForm.primary_benchmark"
+                class="benchmark-primary-select"
+                placeholder="选择主基准"
+                @change="handlePrimaryBenchmarkChange"
+              >
+                <el-option
+                  v-for="item in benchmarkOptions"
+                  :key="item.code"
+                  :label="`${item.label} / ${item.code}`"
+                  :value="item.code"
+                />
+              </el-select>
+            </div>
+
+            <el-select
+              v-model="marketForm.benchmark_index_codes"
+              class="benchmark-code-select"
+              multiple
+              filterable
+              allow-create
+              default-first-option
+              collapse-tags
+              collapse-tags-tooltip
+              placeholder="选择或输入要同步的大盘指数 ts_code"
+              @change="handleBenchmarkCodesChange"
+            >
+              <el-option
+                v-for="item in benchmarkOptions"
+                :key="item.code"
+                :label="`${item.label} / ${item.code}`"
+                :value="item.code"
+              />
+            </el-select>
+
+            <div class="benchmark-panel__summary">
+              当前已选 {{ marketForm.benchmark_index_codes.length }} 个指数，主基准会优先用于特征构建和超额收益标签。
+            </div>
+            <div class="settings-tip">
+              默认预置上证指数、深证成指、创业板指、沪深300、中证500、中证1000、科创50，也支持手动补充其它指数 ts_code。
+            </div>
+
+            <el-alert
+              v-if="benchmarkValidation.invalidSymbols.length"
+              class="settings-alert"
+              type="error"
+              show-icon
+              :closable="false"
+              :title="`发现 ${benchmarkValidation.invalidSymbols.length} 个大盘指数代码格式不正确`"
+              :description="`请改为 6 位数字，或使用 000300.SH / 399001.SZ 这类完整代码。当前异常值：${benchmarkValidation.invalidSymbols.join('、')}`"
+            />
+            <el-alert
+              v-else-if="benchmarkValidation.normalizedPreview"
+              class="settings-alert"
+              type="info"
+              show-icon
+              :closable="false"
+              title="大盘指数代码会按交易所规则自动规范化"
+              :description="`保存后将按以下代码执行拉取：${benchmarkValidation.normalizedPreview}`"
+            />
+          </div>
+        </el-form-item>
+
         <el-form-item label="拉取信息">
           <el-checkbox-group v-model="marketForm.data_types" class="checkbox-grid">
             <el-checkbox v-for="item in datasetOptions" :key="item.value" :label="item.value">
@@ -454,12 +527,24 @@ const datasetOptions = [
   { label: '基础指标', value: 'daily_basic' },
   { label: '资金流向', value: 'moneyflow' },
   { label: '龙虎榜', value: 'top_list' },
+  { label: '大盘指数', value: 'index_daily' },
+]
+const defaultBenchmarkOptions = [
+  { code: '000001.SH', label: '上证指数' },
+  { code: '399001.SZ', label: '深证成指' },
+  { code: '399006.SZ', label: '创业板指' },
+  { code: '000300.SH', label: '沪深300' },
+  { code: '000905.SH', label: '中证500' },
+  { code: '000852.SH', label: '中证1000' },
+  { code: '000688.SH', label: '科创50' },
 ]
 
 const connectionForm = ref({ token: '', api_url: '' })
 const marketForm = ref({
   symbols: '',
-  data_types: ['daily', 'daily_basic', 'moneyflow'],
+  data_types: ['daily', 'daily_basic', 'moneyflow', 'index_daily'],
+  benchmark_index_codes: defaultBenchmarkOptions.map(item => item.code),
+  primary_benchmark: '000300.SH',
   fetch_interval: 3600,
   history_days: 30,
   auto_sync: false,
@@ -501,9 +586,25 @@ const todayDateLabel = formatDate(new Date())
 const isSyncRunning = computed(() => syncStatus.value.status === 'running')
 const syncActionLabel = computed(() => `立即拉取（${syncModeLabel(syncMode.value)}）`)
 const symbolValidation = computed(() => buildSymbolValidation(marketForm.value.symbols))
+const benchmarkValidation = computed(() =>
+  buildSymbolValidation((marketForm.value.benchmark_index_codes || []).join(',')),
+)
 const dateRangeValidation = computed(() => buildDateRangeValidation(syncDateRange.value))
 const poolSymbols = computed(() => getPoolSymbols())
 const poolSymbolSet = computed(() => new Set(poolSymbols.value))
+const benchmarkOptions = computed(() => {
+  const optionMap = new Map(defaultBenchmarkOptions.map(item => [item.code, item]))
+  normalizeCodeList(marketForm.value.benchmark_index_codes).forEach(code => {
+    if (!optionMap.has(code)) {
+      optionMap.set(code, { code, label: code })
+    }
+  })
+  const primary = normalizeSymbol(marketForm.value.primary_benchmark)
+  if (primary && !optionMap.has(primary)) {
+    optionMap.set(primary, { code: primary, label: primary })
+  }
+  return Array.from(optionMap.values())
+})
 const poolStockItems = computed(() =>
   poolSymbols.value.map((tsCode, index) => {
     const meta = stockMetaMap.value[tsCode] || {}
@@ -658,6 +759,30 @@ function normalizeSymbolsText(value) {
     .join(',')
 }
 
+function normalizeCodeList(value) {
+  return Array.from(new Set(parseList(Array.isArray(value) ? value.join(',') : value).map(item => normalizeSymbol(item))))
+}
+
+function normalizeBenchmarkState(codes, primary) {
+  const normalizedCodes = normalizeCodeList(codes)
+  const normalizedPrimary = normalizeSymbol(primary)
+
+  if (normalizedPrimary) {
+    if (!normalizedCodes.includes(normalizedPrimary)) {
+      normalizedCodes.unshift(normalizedPrimary)
+    }
+    return {
+      codes: normalizedCodes,
+      primary: normalizedPrimary,
+    }
+  }
+
+  return {
+    codes: normalizedCodes,
+    primary: normalizedCodes[0] || '',
+  }
+}
+
 function splitSymbols(value) {
   return String(value || '')
     .replaceAll('\n', ',')
@@ -779,9 +904,36 @@ function sortPoolSymbolsByCode() {
   ElMessage.success('股票池已按代码排序')
 }
 
+function handleBenchmarkCodesChange(values) {
+  const normalized = normalizeBenchmarkState(values, marketForm.value.primary_benchmark)
+  marketForm.value.benchmark_index_codes = normalized.codes
+  marketForm.value.primary_benchmark = normalized.primary
+}
+
+function handlePrimaryBenchmarkChange(value) {
+  const normalized = normalizeBenchmarkState(marketForm.value.benchmark_index_codes, value)
+  marketForm.value.benchmark_index_codes = normalized.codes
+  marketForm.value.primary_benchmark = normalized.primary
+}
+
 function validateMarketSettings({ forSync = false } = {}) {
   if (symbolValidation.value.invalidSymbols.length) {
     ElMessage.error('股票池里存在格式不正确的代码，请先修正后再保存或同步')
+    return false
+  }
+
+  if (benchmarkValidation.value.invalidSymbols.length) {
+    ElMessage.error('大盘基准里存在格式不正确的代码，请先修正后再保存或同步')
+    return false
+  }
+
+  if (marketForm.value.data_types.includes('index_daily') && !marketForm.value.benchmark_index_codes.length) {
+    ElMessage.warning('已勾选“大盘指数”，请至少选择一个要同步的基准指数')
+    return false
+  }
+
+  if (marketForm.value.benchmark_index_codes.length && !marketForm.value.primary_benchmark) {
+    ElMessage.warning('请先选择一个主基准指数')
     return false
   }
 
@@ -805,10 +957,16 @@ function buildConnectionSettingsPayload() {
 
 function buildMarketSettingsPayload() {
   const [startDate = '', endDate = ''] = syncDateRange.value || []
+  const normalizedBenchmark = normalizeBenchmarkState(
+    marketForm.value.benchmark_index_codes,
+    marketForm.value.primary_benchmark,
+  )
   return {
     settings: [
       { key: 'symbols', value: normalizeSymbolsText(marketForm.value.symbols), is_secret: false },
       { key: 'data_types', value: marketForm.value.data_types.join(','), is_secret: false },
+      { key: 'benchmark_index_codes', value: normalizedBenchmark.codes.join(','), is_secret: false },
+      { key: 'primary_benchmark', value: normalizedBenchmark.primary, is_secret: false },
       { key: 'fetch_interval', value: String(marketForm.value.fetch_interval), is_secret: false },
       { key: 'history_days', value: String(marketForm.value.history_days), is_secret: false },
       { key: 'start_date', value: startDate, is_secret: false },
@@ -962,7 +1120,13 @@ async function loadMarketSettings() {
   const res = await getSettings('market_data')
   const map = Object.fromEntries((res.settings || []).map(item => [item.key, item.value]))
   marketForm.value.symbols = normalizeSymbolsText(map.symbols || '')
-  marketForm.value.data_types = parseList(map.data_types, ['daily', 'daily_basic', 'moneyflow'])
+  marketForm.value.data_types = parseList(map.data_types, ['daily', 'daily_basic', 'moneyflow', 'index_daily'])
+  const normalizedBenchmark = normalizeBenchmarkState(
+    parseList(map.benchmark_index_codes, defaultBenchmarkOptions.map(item => item.code)),
+    map.primary_benchmark || '000300.SH',
+  )
+  marketForm.value.benchmark_index_codes = normalizedBenchmark.codes
+  marketForm.value.primary_benchmark = normalizedBenchmark.primary
   marketForm.value.fetch_interval = parseInteger(map.fetch_interval, 3600)
   marketForm.value.history_days = parseInteger(map.history_days, 30)
   marketForm.value.auto_sync = parseBoolean(map.auto_sync)
@@ -1314,6 +1478,51 @@ onBeforeUnmount(() => {
   margin-top: auto;
 }
 
+.benchmark-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  width: 100%;
+  padding: 18px;
+  border-radius: 24px;
+  border: 1px solid rgba(120, 148, 180, 0.24);
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.76), rgba(243, 248, 255, 0.6)),
+    radial-gradient(circle at top right, rgba(61, 129, 212, 0.16), transparent 52%);
+  backdrop-filter: blur(18px);
+}
+
+.benchmark-panel__header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(240px, 320px);
+  gap: 14px;
+  align-items: start;
+}
+
+.benchmark-panel__title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.benchmark-panel__desc {
+  margin-top: 6px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.8;
+}
+
+.benchmark-primary-select,
+.benchmark-code-select {
+  width: 100%;
+}
+
+.benchmark-panel__summary {
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.7;
+}
+
 .settings-tip {
   margin-top: 8px;
   color: var(--el-text-color-secondary);
@@ -1498,6 +1707,7 @@ onBeforeUnmount(() => {
   .stock-filter-grid,
   .settings-grid,
   .runtime-grid,
+  .benchmark-panel__header,
   .checkbox-grid,
   .mode-panel,
   .sync-monitor__meta {

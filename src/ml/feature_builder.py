@@ -3,6 +3,7 @@ from typing import Iterable, List, Optional
 
 import pandas as pd
 
+from ..data.market_benchmarks import DEFAULT_PRIMARY_BENCHMARK
 from ..data.db.sqlite_client import SQLiteClient
 
 
@@ -24,6 +25,12 @@ class FeatureBuilder:
 
         snapshot_df = self._load_snapshot_frame(symbols=symbols, start_date=start_date, end_date=end_date)
         merged = self._merge_snapshot_metrics(daily_df, snapshot_df)
+        benchmark_df = self._load_benchmark_frame(
+            index_code=self._get_primary_benchmark_code(),
+            start_date=start_date,
+            end_date=end_date,
+        )
+        merged = self._merge_benchmark_metrics(merged, benchmark_df)
         return self._build_features(merged)
 
     def _load_daily_frame(
@@ -96,6 +103,37 @@ class FeatureBuilder:
         frame["trade_date"] = pd.to_datetime(frame["trade_date"])
         return frame
 
+    def _load_benchmark_frame(
+        self,
+        index_code: str,
+        start_date: str = "",
+        end_date: str = "",
+    ) -> pd.DataFrame:
+        sql = """
+            SELECT index_code, trade_date, open, close, high, low, pre_close, change, pct_chg, volume, amount
+            FROM market_index_data
+            WHERE index_code = ?
+        """
+        params: List[str] = [index_code]
+        if start_date:
+            sql += " AND trade_date >= ?"
+            params.append(start_date)
+        if end_date:
+            sql += " AND trade_date <= ?"
+            params.append(end_date)
+        sql += " ORDER BY trade_date"
+
+        with self.db.get_connection() as conn:
+            frame = pd.read_sql_query(sql, conn, params=params)
+
+        if frame.empty:
+            return frame
+
+        frame["trade_date"] = pd.to_datetime(frame["trade_date"])
+        for column in ("open", "close", "high", "low", "pre_close", "change", "pct_chg", "volume", "amount"):
+            frame[column] = pd.to_numeric(frame[column], errors="coerce")
+        return frame
+
     def _merge_snapshot_metrics(self, daily_df: pd.DataFrame, snapshot_df: pd.DataFrame) -> pd.DataFrame:
         merged = daily_df.copy()
         if snapshot_df.empty:
@@ -152,6 +190,32 @@ class FeatureBuilder:
         merged["top_list_flag"] = merged["top_list_flag"].fillna(0.0)
         return merged
 
+    def _merge_benchmark_metrics(self, frame: pd.DataFrame, benchmark_df: pd.DataFrame) -> pd.DataFrame:
+        merged = frame.copy()
+        if benchmark_df.empty:
+            merged["benchmark_index_code"] = self._get_primary_benchmark_code()
+            merged["benchmark_open"] = pd.NA
+            merged["benchmark_close"] = pd.NA
+            merged["benchmark_pct_chg"] = pd.NA
+            return merged
+
+        benchmark_frame = benchmark_df.rename(
+            columns={
+                "index_code": "benchmark_index_code",
+                "open": "benchmark_open",
+                "close": "benchmark_close",
+                "high": "benchmark_high",
+                "low": "benchmark_low",
+                "pre_close": "benchmark_pre_close",
+                "change": "benchmark_change",
+                "pct_chg": "benchmark_pct_chg",
+                "volume": "benchmark_volume",
+                "amount": "benchmark_amount",
+            }
+        )
+        benchmark_frame = benchmark_frame.drop_duplicates(subset=["trade_date"], keep="last")
+        return merged.merge(benchmark_frame, on="trade_date", how="left")
+
     def _build_features(self, frame: pd.DataFrame) -> pd.DataFrame:
         if frame.empty:
             return frame
@@ -193,6 +257,20 @@ class FeatureBuilder:
         frame["macd_signal"] = macd_frame["macd_signal"]
         frame["macd_hist"] = macd_frame["macd_hist"]
 
+        benchmark_features = self._build_benchmark_features(frame)
+        if not benchmark_features.empty:
+            frame = frame.merge(benchmark_features, on="trade_date", how="left")
+            frame["relative_strength_1d"] = frame["return_1d"] - frame["benchmark_return_1d"]
+            frame["relative_strength_5d"] = frame["return_5d"] - frame["benchmark_return_5d"]
+            frame["excess_momentum_20d"] = frame["momentum_20d"] - frame["benchmark_momentum_20d"]
+        else:
+            frame["benchmark_return_1d"] = pd.NA
+            frame["benchmark_return_5d"] = pd.NA
+            frame["benchmark_momentum_20d"] = pd.NA
+            frame["relative_strength_1d"] = pd.NA
+            frame["relative_strength_5d"] = pd.NA
+            frame["excess_momentum_20d"] = pd.NA
+
         if "net_mf_amount" not in frame.columns:
             frame["net_mf_amount"] = pd.NA
         frame["net_mf_ratio"] = frame["net_mf_amount"] / frame["amount"].replace(0, pd.NA)
@@ -212,3 +290,36 @@ class FeatureBuilder:
             },
             index=frame.index,
         )
+
+    def _build_benchmark_features(self, frame: pd.DataFrame) -> pd.DataFrame:
+        if "benchmark_close" not in frame.columns:
+            return pd.DataFrame()
+
+        benchmark = (
+            frame[["trade_date", "benchmark_close"]]
+            .dropna(subset=["benchmark_close"])
+            .drop_duplicates(subset=["trade_date"], keep="last")
+            .sort_values("trade_date")
+            .copy()
+        )
+        if benchmark.empty:
+            return pd.DataFrame()
+
+        benchmark["benchmark_return_1d"] = benchmark["benchmark_close"].pct_change()
+        benchmark["benchmark_return_5d"] = benchmark["benchmark_close"].pct_change(5)
+        benchmark["benchmark_momentum_20d"] = benchmark["benchmark_close"].pct_change(20)
+        return benchmark[
+            ["trade_date", "benchmark_return_1d", "benchmark_return_5d", "benchmark_momentum_20d"]
+        ]
+
+    def _get_primary_benchmark_code(self) -> str:
+        with self.db.get_connection() as conn:
+            row = conn.execute(
+                """
+                SELECT value
+                FROM system_settings
+                WHERE category = 'market_data' AND key = 'primary_benchmark'
+                """
+            ).fetchone()
+        value = row["value"] if row and row["value"] else DEFAULT_PRIMARY_BENCHMARK
+        return str(value).strip().upper()

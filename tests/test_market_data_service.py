@@ -65,6 +65,25 @@ class _FakeTushareAPI:
     def get_top_list(self, trade_date):
         return pd.DataFrame([])
 
+    def get_index_daily(self, ts_code, start_date, end_date):
+        return pd.DataFrame(
+            [
+                {
+                    "ts_code": ts_code,
+                    "trade_date": "20260320",
+                    "open": 3980.0,
+                    "close": 4012.0,
+                    "high": 4021.0,
+                    "low": 3972.0,
+                    "pre_close": 3976.0,
+                    "change": 36.0,
+                    "pct_chg": 0.91,
+                    "vol": 321000000,
+                    "amount": 456000000000,
+                }
+            ]
+        )
+
     def get_stock_basic(self, exchange=None):
         return pd.DataFrame(
             [
@@ -119,7 +138,9 @@ class TestMarketDataService(unittest.TestCase):
             "market_data",
             [
                 {"key": "symbols", "value": "000001.SZ,600519.SH", "is_secret": False},
-                {"key": "data_types", "value": "daily,daily_basic,moneyflow", "is_secret": False},
+                {"key": "data_types", "value": "daily,daily_basic,moneyflow,index_daily", "is_secret": False},
+                {"key": "benchmark_index_codes", "value": "000300.SH,000001.SH", "is_secret": False},
+                {"key": "primary_benchmark", "value": "000300.SH", "is_secret": False},
                 {"key": "fetch_interval", "value": "3600", "is_secret": False},
                 {"key": "history_days", "value": "15", "is_secret": False},
                 {"key": "start_date", "value": "", "is_secret": False},
@@ -136,7 +157,9 @@ class TestMarketDataService(unittest.TestCase):
         settings = self.service.get_sync_settings()
 
         self.assertEqual(settings["symbols"], ["000001.SZ", "600519.SH"])
-        self.assertEqual(settings["data_types"], ["daily", "daily_basic", "moneyflow"])
+        self.assertEqual(settings["data_types"], ["daily", "daily_basic", "moneyflow", "index_daily"])
+        self.assertEqual(settings["benchmark_index_codes"], ["000300.SH", "000001.SH"])
+        self.assertEqual(settings["primary_benchmark"], "000300.SH")
         self.assertEqual(settings["fetch_interval"], 3600)
         self.assertEqual(settings["history_days"], 15)
         self.assertEqual(settings["start_date"], "")
@@ -165,6 +188,9 @@ class TestMarketDataService(unittest.TestCase):
         self.assertEqual(result["symbol_count"], 2)
         self.assertEqual(result["daily_rows"], 2)
         self.assertEqual(result["snapshot_rows"], 4)
+        self.assertEqual(result["index_rows"], 2)
+        self.assertEqual(result["benchmark_index_codes"], ["000300.SH", "000001.SH"])
+        self.assertEqual(result["primary_benchmark"], "000300.SH")
         self.assertGreaterEqual(len(progress_events), 1)
         self.assertEqual(progress_events[-1]["current"], progress_events[-1]["total"])
 
@@ -176,8 +202,39 @@ class TestMarketDataService(unittest.TestCase):
         self.assertEqual(record["close"], 10.5)
         self.assertEqual(record["pe"], 15.6)
         self.assertEqual(record["net_mf_amount"], 500)
+        self.assertEqual(overview["primary_benchmark"], "000300.SH")
+        self.assertEqual(overview["benchmark_index_codes"], ["000300.SH", "000001.SH"])
+        self.assertEqual(overview["benchmark_summary"]["index_code"], "000300.SH")
+        self.assertEqual(overview["benchmark_summary"]["close"], 4012.0)
+        self.assertEqual(len(overview["benchmark_series"]), 1)
         self.assertEqual(overview["runtime"]["last_sync_status"], "success")
         self.assertEqual(overview["sync_window"]["history_days"], 15)
+
+    def test_sync_configured_data_supports_benchmark_only(self):
+        self.settings.update_settings(
+            "market_data",
+            [
+                {"key": "symbols", "value": "", "is_secret": False},
+                {"key": "data_types", "value": "index_daily", "is_secret": False},
+                {"key": "benchmark_index_codes", "value": "000300.SH", "is_secret": False},
+                {"key": "primary_benchmark", "value": "000300.SH", "is_secret": False},
+            ],
+        )
+
+        with patch("backend.services.market_data_service.TushareAPI", _FakeTushareAPI):
+            result = self.service.sync_configured_data()
+
+        self.assertTrue(result["success"])
+        self.assertEqual(result["symbol_count"], 0)
+        self.assertEqual(result["daily_rows"], 0)
+        self.assertEqual(result["snapshot_rows"], 0)
+        self.assertEqual(result["index_rows"], 1)
+
+        overview = self.service.get_overview()
+        self.assertEqual(overview["ts_code"], "")
+        self.assertFalse(overview["records"])
+        self.assertEqual(overview["benchmark_summary"]["index_code"], "000300.SH")
+        self.assertEqual(len(overview["benchmark_series"]), 1)
 
     def test_sync_configured_data_respects_explicit_date_range(self):
         self.settings.update_settings(

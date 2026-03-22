@@ -136,6 +136,7 @@ const navGroups = [
     icon: DataAnalysis,
     items: [
       { path: '/review', label: '复盘分析', desc: '沉淀正确与错误决策样本' },
+      { path: '/ml', label: '机器学习实验', desc: '配置特征、标签、模型与调优并输出预测结果' },
       { path: '/market/data', label: '行情数据中心', desc: '查看股票池同步结果、趋势图和指标表格' },
       { path: '/news/articles', label: '资讯列表', desc: '查看自动采集入库的新闻、公告与宏观资讯' },
       { path: '/news/briefs', label: '每日简报', desc: '集中查看系统生成的日度资讯摘要' },
@@ -151,6 +152,7 @@ const adminItems = [
   { path: '/agents', label: 'Agent 管理', desc: '控制各智能体角色与启停' },
   { path: '/sources', label: '资讯源管理', desc: '维护新闻与情报采集源' },
   { path: '/users', label: '用户管理', desc: '管理登录账号与权限范围' },
+  { path: '/admin/logs', label: '使用日志', desc: '查看用户采用的方法、实验次数与收益指标' },
 ]
 
 function getStoredOpenGroups() {
@@ -175,6 +177,7 @@ const routeMeta = {
   '/trades': { title: '交易记录', description: '跟踪真实交易数据，并把执行动作沉淀为可追溯的记录。' },
   '/backtest': { title: '回测系统', description: '快速验证参数区间，帮助策略在上线前更早暴露风险。' },
   '/review': { title: '复盘分析', description: '把正确与错误案例聚合起来，形成更高质量的经验闭环。' },
+  '/ml': { title: '机器学习实验', description: '在同一页里选择自变量、因变量、模型与调优方式，并输出预测结果。' },
   '/market/data': { title: '行情数据中心', description: '集中查看自定义股票池的行情、基础指标和资金流向，兼顾趋势图与明细表。' },
   '/news/articles': { title: '资讯列表', description: '汇总自动采集入库的公告、监管、宏观和快讯内容，方便统一检索。' },
   '/news/briefs': { title: '每日简报', description: '按日查看系统生成的资讯摘要，快速把握今日重要事件。' },
@@ -185,6 +188,7 @@ const routeMeta = {
   '/agents': { title: 'Agent 管理', description: '统一管理多智能体的提示词、模型配置与启停状态。' },
   '/sources': { title: '资讯源管理', description: '维护新闻采集源，让观察层输入更加稳定可靠。' },
   '/users': { title: '用户管理', description: '维护账号、角色与系统访问边界。' },
+  '/admin/logs': { title: '使用日志', description: '只有管理员可查看的实验与回测日志，帮助识别更稳定的方法与因子方向。' },
 }
 
 function resolveRouteMeta(path) {

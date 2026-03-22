@@ -37,7 +37,9 @@ class TestConfig(unittest.TestCase):
 
                     market_data:
                       symbols: "${TEST_MARKET_DATA_SYMBOLS:-000001.SZ,600519.SH}"
-                      data_types: "${TEST_MARKET_DATA_TYPES:-daily,daily_basic,moneyflow}"
+                      data_types: "${TEST_MARKET_DATA_TYPES:-daily,daily_basic,moneyflow,index_daily}"
+                      benchmark_index_codes: "${TEST_MARKET_DATA_BENCHMARK_INDEX_CODES:-000300.SH,000905.SH}"
+                      primary_benchmark: "${TEST_MARKET_DATA_PRIMARY_BENCHMARK:-000300.SH}"
                       fetch_interval: "${TEST_MARKET_DATA_FETCH_INTERVAL:-3600}"
                       history_days: "${TEST_MARKET_DATA_HISTORY_DAYS:-30}"
                       start_date: "${TEST_MARKET_DATA_START_DATE:-}"
@@ -71,7 +73,9 @@ class TestConfig(unittest.TestCase):
             self.assertEqual(config.tushare.token, "ts-token")
             self.assertEqual(config.tushare.api_url, "")
             self.assertEqual(config.market_data.symbols, "000001.SZ,600519.SH")
-            self.assertEqual(config.market_data.data_types, "daily,daily_basic,moneyflow")
+            self.assertEqual(config.market_data.data_types, "daily,daily_basic,moneyflow,index_daily")
+            self.assertEqual(config.market_data.benchmark_index_codes, "000300.SH,000905.SH")
+            self.assertEqual(config.market_data.primary_benchmark, "000300.SH")
             self.assertEqual(config.market_data.fetch_interval, 3600)
             self.assertEqual(config.market_data.history_days, 30)
             self.assertEqual(config.market_data.start_date, "")
@@ -106,6 +110,8 @@ class TestConfig(unittest.TestCase):
                     market_data:
                       symbols: "000001.SZ"
                       data_types: "daily"
+                      benchmark_index_codes: "000300.SH"
+                      primary_benchmark: "000300.SH"
                       fetch_interval: 3600
                       history_days: 10
                       start_date: ""

@@ -74,6 +74,12 @@ class TestBacktestRouter(unittest.TestCase):
         self.assertEqual(kwargs["top_n"], 3)
         self.assertEqual(kwargs["max_features"], 5)
         self.assertEqual(kwargs["model_type"], "sklearn_ridge")
+        with self.db.get_connection() as conn:
+            row = conn.execute("SELECT * FROM usage_logs ORDER BY id DESC LIMIT 1").fetchone()
+        self.assertIsNotNone(row)
+        self.assertEqual(row["module"], "backtest")
+        self.assertEqual(row["method"], "sklearn_ridge")
+        self.assertEqual(row["status"], "success")
 
     def test_portfolio_compare_mode_dispatches_with_compare_flag(self):
         with patch(
@@ -139,6 +145,11 @@ class TestBacktestRouter(unittest.TestCase):
         self.assertEqual(body["total_trades"], 3)
         mock_api.assert_called_once_with("demo-token", api_url="http://127.0.0.1:8010/")
         mock_engine_cls.return_value.run_backtest.assert_called_once_with("2026-02-01", "2026-03-20", 7)
+        with self.db.get_connection() as conn:
+            row = conn.execute("SELECT * FROM usage_logs ORDER BY id DESC LIMIT 1").fetchone()
+        self.assertIsNotNone(row)
+        self.assertEqual(row["action"], "review_backtest")
+        self.assertEqual(row["method"], "review / hold_7d")
 
 
 if __name__ == "__main__":

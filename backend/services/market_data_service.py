@@ -7,12 +7,17 @@ from typing import Callable, Dict, List, Optional
 import pandas as pd
 
 from backend.services.settings_service import SettingsService
+from src.data.market_benchmarks import (
+    BENCHMARK_INDEX_LABELS,
+    DEFAULT_BENCHMARK_INDEX_CODES,
+    DEFAULT_PRIMARY_BENCHMARK,
+)
 from src.data.db.sqlite_client import SQLiteClient
 from src.data.sources.tushare_api import TushareAPI
 
 
-SUPPORTED_DATA_TYPES = ("daily", "daily_basic", "moneyflow", "top_list")
-DEFAULT_DATA_TYPES = ("daily", "daily_basic", "moneyflow")
+SUPPORTED_DATA_TYPES = ("daily", "daily_basic", "moneyflow", "top_list", "index_daily")
+DEFAULT_DATA_TYPES = ("daily", "daily_basic", "moneyflow", "index_daily")
 SUPPORTED_SYNC_MODES = ("incremental", "backfill")
 TS_CODE_PATTERN = re.compile(r"^\d{6}\.(SH|SZ|BJ)$")
 STOCK_CATALOG_CACHE_TTL = timedelta(hours=6)
@@ -71,6 +76,10 @@ def _normalize_symbol(symbol: str) -> str:
 
 def _normalize_symbols(symbols: List[str]) -> List[str]:
     return [item for item in (_normalize_symbol(symbol) for symbol in symbols) if item]
+
+
+def _normalize_unique_symbols(symbols: List[str]) -> List[str]:
+    return list(dict.fromkeys(_normalize_symbols(symbols)))
 
 
 def _validate_symbols(symbols: List[str]) -> None:
@@ -143,9 +152,27 @@ class MarketDataService:
         if not data_types:
             data_types = list(DEFAULT_DATA_TYPES)
 
+        benchmark_index_codes = _normalize_symbols(
+            _parse_csv(self.settings.get_raw_value("market_data", "benchmark_index_codes") or "")
+        )
+        if not benchmark_index_codes:
+            benchmark_index_codes = list(DEFAULT_BENCHMARK_INDEX_CODES)
+
+        primary_benchmark = _normalize_symbol(
+            self.settings.get_raw_value("market_data", "primary_benchmark") or DEFAULT_PRIMARY_BENCHMARK
+        )
+        if not primary_benchmark:
+            primary_benchmark = DEFAULT_PRIMARY_BENCHMARK
+        if primary_benchmark not in benchmark_index_codes:
+            benchmark_index_codes = [primary_benchmark, *benchmark_index_codes]
+
         return {
-            "symbols": _normalize_symbols(_parse_csv(self.settings.get_raw_value("market_data", "symbols") or "")),
+            "symbols": _normalize_unique_symbols(
+                _parse_csv(self.settings.get_raw_value("market_data", "symbols") or "")
+            ),
             "data_types": data_types,
+            "benchmark_index_codes": _normalize_unique_symbols(benchmark_index_codes),
+            "primary_benchmark": primary_benchmark,
             "fetch_interval": _parse_int(
                 self.settings.get_raw_value("market_data", "fetch_interval"),
                 default=3600,
@@ -216,8 +243,10 @@ class MarketDataService:
 
     def sync_if_due(self) -> Dict:
         settings = self.get_sync_settings()
-        if not settings["auto_sync"] or not settings["symbols"]:
-            return {"success": False, "skipped": True, "message": "自动同步未启用或股票池为空"}
+        if not settings["auto_sync"] or (
+            not settings["symbols"] and not settings["benchmark_index_codes"]
+        ):
+            return {"success": False, "skipped": True, "message": "自动同步未启用或股票池和大盘基准都为空"}
 
         last_sync_at = self.get_runtime_status()["last_sync_at"]
         if last_sync_at:
@@ -241,10 +270,15 @@ class MarketDataService:
         settings = self.get_sync_settings()
         symbols = settings["symbols"]
         data_types = settings["data_types"]
+        benchmark_index_codes = settings["benchmark_index_codes"]
+        primary_benchmark = settings["primary_benchmark"]
         mode = _normalize_sync_mode(mode)
-        if not symbols:
-            raise ValueError("请先配置需要拉取的股票代码")
-        _validate_symbols(symbols)
+        if not symbols and not benchmark_index_codes:
+            raise ValueError("请先配置股票池或大盘基准指数")
+        if symbols:
+            _validate_symbols(symbols)
+        if benchmark_index_codes:
+            _validate_symbols(benchmark_index_codes)
         if not data_types:
             raise ValueError("请先选择至少一种拉取信息")
 
@@ -260,8 +294,9 @@ class MarketDataService:
         api = TushareAPI(token, api_url=api_url)
         daily_rows = 0
         snapshot_rows = 0
+        index_rows = 0
         errors: List[str] = []
-        tasks = self._build_sync_tasks(symbols, data_types, start_date, end_date)
+        tasks = self._build_sync_tasks(symbols, benchmark_index_codes, data_types, start_date, end_date)
         total_tasks = len(tasks)
 
         self._emit_progress(
@@ -288,6 +323,7 @@ class MarketDataService:
                 task_result = self._execute_sync_task(api, task, symbols)
                 daily_rows += task_result["daily_rows"]
                 snapshot_rows += task_result["snapshot_rows"]
+                index_rows += task_result.get("index_rows", 0)
             except Exception as exc:
                 errors.append(f"{task_label}: {exc}")
 
@@ -312,6 +348,7 @@ class MarketDataService:
             symbol_count=len(symbols),
             daily_rows=daily_rows,
             snapshot_rows=snapshot_rows,
+            index_rows=index_rows,
             error_count=len(errors),
         )
         self._update_runtime(sync_status, message)
@@ -325,6 +362,9 @@ class MarketDataService:
             "data_types": data_types,
             "daily_rows": daily_rows,
             "snapshot_rows": snapshot_rows,
+            "index_rows": index_rows,
+            "benchmark_index_codes": benchmark_index_codes,
+            "primary_benchmark": primary_benchmark,
             "range_start": start_dt.strftime("%Y-%m-%d"),
             "range_end": end_dt.strftime("%Y-%m-%d"),
             "errors": errors,
@@ -340,16 +380,46 @@ class MarketDataService:
         settings = self.get_sync_settings()
         symbols = settings["symbols"]
         selected_symbol = ts_code or (symbols[0] if symbols else "")
+        primary_benchmark = settings["primary_benchmark"]
         runtime = self.get_runtime_status()
+
+        benchmark_records = self.list_benchmark_records(
+            index_code=primary_benchmark,
+            start_date=start_date,
+            end_date=end_date,
+            limit=limit,
+        )
+        benchmark_series = [
+            {
+                "trade_date": row["trade_date"],
+                "close": row.get("close"),
+                "pct_chg": row.get("pct_chg"),
+            }
+            for row in reversed(benchmark_records)
+            if row.get("close") is not None
+        ]
+        latest_benchmark = benchmark_records[0] if benchmark_records else {}
+        benchmark_summary = {
+            "index_code": primary_benchmark,
+            "name": BENCHMARK_INDEX_LABELS.get(primary_benchmark, primary_benchmark),
+            "trade_date": latest_benchmark.get("trade_date", ""),
+            "close": latest_benchmark.get("close"),
+            "pct_chg": latest_benchmark.get("pct_chg"),
+            "change": latest_benchmark.get("change"),
+        }
 
         if not selected_symbol:
             return {
                 "symbols": [],
                 "ts_code": "",
                 "data_types": settings["data_types"],
+                "benchmark_index_codes": settings["benchmark_index_codes"],
+                "primary_benchmark": primary_benchmark,
                 "records": [],
                 "price_series": [],
+                "benchmark_series": benchmark_series,
                 "latest_summary": {},
+                "benchmark_summary": benchmark_summary,
                 "sync_window": {
                     "start_date": settings["start_date"],
                     "end_date": settings["end_date"],
@@ -391,9 +461,13 @@ class MarketDataService:
             "symbols": symbols,
             "ts_code": selected_symbol,
             "data_types": settings["data_types"],
+            "benchmark_index_codes": settings["benchmark_index_codes"],
+            "primary_benchmark": primary_benchmark,
             "records": records,
             "price_series": price_series,
+            "benchmark_series": benchmark_series,
             "latest_summary": latest_summary,
+            "benchmark_summary": benchmark_summary,
             "sync_window": {
                 "start_date": settings["start_date"],
                 "end_date": settings["end_date"],
@@ -435,9 +509,51 @@ class MarketDataService:
 
         return sorted(merged.values(), key=lambda item: item["trade_date"], reverse=True)[:limit]
 
+    def list_benchmark_records(
+        self,
+        index_code: str,
+        start_date: str = "",
+        end_date: str = "",
+        limit: int = 120,
+    ) -> List[Dict]:
+        limit = max(1, min(limit, 500))
+        rows = self._query_index_rows(index_code, start_date, end_date, limit)
+        records = []
+        for row in rows:
+            records.append(
+                {
+                    "index_code": row["index_code"],
+                    "trade_date": row["trade_date"],
+                    "open": row["open"],
+                    "close": row["close"],
+                    "high": row["high"],
+                    "low": row["low"],
+                    "pre_close": row["pre_close"],
+                    "change": row["change"],
+                    "pct_chg": row["pct_chg"],
+                    "volume": row["volume"],
+                    "amount": row["amount"],
+                }
+            )
+        return records
+
     def _query_daily_rows(self, ts_code: str, start_date: str, end_date: str, limit: int):
         sql = "SELECT * FROM stock_data WHERE ts_code = ?"
         values: List = [ts_code]
+        if start_date:
+            sql += " AND trade_date >= ?"
+            values.append(start_date)
+        if end_date:
+            sql += " AND trade_date <= ?"
+            values.append(end_date)
+        sql += " ORDER BY trade_date DESC LIMIT ?"
+        values.append(limit)
+        with self.db.get_connection() as conn:
+            return conn.execute(sql, values).fetchall()
+
+    def _query_index_rows(self, index_code: str, start_date: str, end_date: str, limit: int):
+        sql = "SELECT * FROM market_index_data WHERE index_code = ?"
+        values: List = [index_code]
         if start_date:
             sql += " AND trade_date >= ?"
             values.append(start_date)
@@ -539,6 +655,7 @@ class MarketDataService:
     def _build_sync_tasks(
         self,
         symbols: List[str],
+        benchmark_index_codes: List[str],
         data_types: List[str],
         start_date: str,
         end_date: str,
@@ -555,9 +672,20 @@ class MarketDataService:
                 }
             )
 
+        if "index_daily" in data_types:
+            for index_code in benchmark_index_codes:
+                tasks.append(
+                    {
+                        "dataset": "index_daily",
+                        "ts_code": index_code,
+                        "start_date": start_date,
+                        "end_date": end_date,
+                    }
+                )
+
         for ts_code in symbols:
             for dataset in data_types:
-                if dataset == "top_list":
+                if dataset in {"top_list", "index_daily"}:
                     continue
                 tasks.append(
                     {
@@ -579,6 +707,7 @@ class MarketDataService:
             return {
                 "daily_rows": self._store_daily_rows(api.get_daily_data(ts_code, start_date, end_date)),
                 "snapshot_rows": 0,
+                "index_rows": 0,
             }
 
         if dataset == "daily_basic":
@@ -588,6 +717,7 @@ class MarketDataService:
                     api.get_daily_basic(ts_code, start_date, end_date),
                     "daily_basic",
                 ),
+                "index_rows": 0,
             }
 
         if dataset == "moneyflow":
@@ -597,6 +727,7 @@ class MarketDataService:
                     api.get_moneyflow(ts_code, start_date, end_date),
                     "moneyflow",
                 ),
+                "index_rows": 0,
             }
 
         if dataset == "top_list":
@@ -606,6 +737,14 @@ class MarketDataService:
             return {
                 "daily_rows": 0,
                 "snapshot_rows": self._store_snapshot_rows(top_df, "top_list"),
+                "index_rows": 0,
+            }
+
+        if dataset == "index_daily":
+            return {
+                "daily_rows": 0,
+                "snapshot_rows": 0,
+                "index_rows": self._store_index_rows(api.get_index_daily(ts_code, start_date, end_date)),
             }
 
         raise ValueError(f"不支持的数据类型: {dataset}")
@@ -616,11 +755,15 @@ class MarketDataService:
             "daily_basic": "基础指标",
             "moneyflow": "资金流向",
             "top_list": "龙虎榜",
+            "index_daily": "大盘指数",
         }
         dataset = task["dataset"]
         dataset_label = dataset_labels.get(dataset, dataset)
         if dataset == "top_list":
             return dataset_label
+        if dataset == "index_daily":
+            code = task["ts_code"]
+            return f"{BENCHMARK_INDEX_LABELS.get(code, code)} {dataset_label}"
         return f"{task['ts_code']} {dataset_label}"
 
     def _get_mode_label(self, mode: str) -> str:
@@ -642,12 +785,13 @@ class MarketDataService:
         symbol_count: int,
         daily_rows: int,
         snapshot_rows: int,
+        index_rows: int,
         error_count: int,
     ) -> str:
         summary = (
             f"{trigger} {self._get_mode_label(mode)}完成，区间 {start_dt.strftime('%Y-%m-%d')} ~ "
             f"{end_dt.strftime('%Y-%m-%d')}，股票 {symbol_count} 只，日线 {daily_rows} 行，"
-            f"扩展指标 {snapshot_rows} 行"
+            f"扩展指标 {snapshot_rows} 行，大盘指数 {index_rows} 行"
         )
         if error_count:
             summary += f"，失败 {error_count} 项"
@@ -707,6 +851,49 @@ class MarketDataService:
                         _clean_value(record.get("close")),
                         _clean_value(record.get("high")),
                         _clean_value(record.get("low")),
+                        _clean_value(record.get("vol") or record.get("volume")),
+                        _clean_value(record.get("amount")),
+                    ),
+                )
+                rows += 1
+            conn.commit()
+        return rows
+
+    def _store_index_rows(self, frame: Optional[pd.DataFrame]) -> int:
+        if frame is None or frame.empty:
+            return 0
+
+        rows = 0
+        with self.db.get_connection() as conn:
+            for record in frame.to_dict("records"):
+                conn.execute(
+                    """
+                    INSERT INTO market_index_data (
+                        index_code, trade_date, open, close, high, low, pre_close,
+                        change, pct_chg, volume, amount
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(index_code, trade_date) DO UPDATE SET
+                        open = excluded.open,
+                        close = excluded.close,
+                        high = excluded.high,
+                        low = excluded.low,
+                        pre_close = excluded.pre_close,
+                        change = excluded.change,
+                        pct_chg = excluded.pct_chg,
+                        volume = excluded.volume,
+                        amount = excluded.amount
+                    """,
+                    (
+                        record.get("ts_code"),
+                        _normalize_trade_date(record.get("trade_date")),
+                        _clean_value(record.get("open")),
+                        _clean_value(record.get("close")),
+                        _clean_value(record.get("high")),
+                        _clean_value(record.get("low")),
+                        _clean_value(record.get("pre_close")),
+                        _clean_value(record.get("change")),
+                        _clean_value(record.get("pct_chg")),
                         _clean_value(record.get("vol") or record.get("volume")),
                         _clean_value(record.get("amount")),
                     ),

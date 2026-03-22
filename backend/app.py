@@ -11,10 +11,12 @@ from fastapi.staticfiles import StaticFiles
 from backend.auth.jwt_handler import validate_jwt_config
 from backend.routers import (
     agents,
+    admin_logs,
     auth,
     backtest,
     knowledge,
     market_data,
+    ml,
     news,
     recommend,
     review,
@@ -62,6 +64,7 @@ app.add_middleware(
 
 app.include_router(auth.router)
 app.include_router(users.router)
+app.include_router(admin_logs.router)
 app.include_router(settings.router)
 app.include_router(agents.router)
 app.include_router(sources.router)
@@ -73,6 +76,7 @@ app.include_router(knowledge.router)
 app.include_router(backtest.router)
 app.include_router(trades.router)
 app.include_router(workflow.router)
+app.include_router(ml.router)
 
 
 @app.on_event("startup")

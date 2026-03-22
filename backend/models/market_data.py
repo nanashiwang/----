@@ -7,9 +7,13 @@ class MarketDataOverviewOut(BaseModel):
     symbols: List[str] = Field(default_factory=list)
     ts_code: str = ""
     data_types: List[str] = Field(default_factory=list)
+    benchmark_index_codes: List[str] = Field(default_factory=list)
+    primary_benchmark: str = ""
     records: List[Dict[str, Any]] = Field(default_factory=list)
     price_series: List[Dict[str, Any]] = Field(default_factory=list)
+    benchmark_series: List[Dict[str, Any]] = Field(default_factory=list)
     latest_summary: Dict[str, Any] = Field(default_factory=dict)
+    benchmark_summary: Dict[str, Any] = Field(default_factory=dict)
     sync_window: Dict[str, Any] = Field(default_factory=dict)
     runtime: Dict[str, Any] = Field(default_factory=dict)
 
@@ -45,6 +49,9 @@ class MarketDataSyncResult(BaseModel):
     data_types: List[str] = Field(default_factory=list)
     daily_rows: int = 0
     snapshot_rows: int = 0
+    index_rows: int = 0
+    benchmark_index_codes: List[str] = Field(default_factory=list)
+    primary_benchmark: str = ""
     range_start: str = ""
     range_end: str = ""
     errors: List[str] = Field(default_factory=list)

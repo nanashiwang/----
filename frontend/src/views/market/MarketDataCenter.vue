@@ -49,6 +49,18 @@
         <div class="metric-hint">{{ latestSummary.trade_date || '暂无数据' }}</div>
       </article>
 
+      <article class="metric-card glass-surface metric-card--accent">
+        <div class="metric-label">主基准</div>
+        <div class="metric-value metric-value--compact">{{ benchmarkSummary.name || primaryBenchmark || '--' }}</div>
+        <div class="metric-hint">{{ benchmarkSummary.index_code || primaryBenchmark || '未配置' }}</div>
+      </article>
+
+      <article class="metric-card glass-surface">
+        <div class="metric-label">基准收盘 / 涨跌</div>
+        <div class="metric-value">{{ formatBenchmarkSnapshot(benchmarkSummary.close, benchmarkSummary.pct_chg) }}</div>
+        <div class="metric-hint">{{ benchmarkSummary.trade_date || '暂无数据' }}</div>
+      </article>
+
       <article class="metric-card glass-surface">
         <div class="metric-label">PE / PB</div>
         <div class="metric-value">{{ formatPair(latestSummary.pe, latestSummary.pb) }}</div>
@@ -127,6 +139,14 @@ import { getMarketDataOverview } from '../../api/index'
 
 use([CanvasRenderer, LineChart, BarChart, GridComponent, TooltipComponent, LegendComponent])
 
+const datasetLabelMap = {
+  daily: '日线行情',
+  daily_basic: '基础指标',
+  moneyflow: '资金流向',
+  top_list: '龙虎榜',
+  index_daily: '大盘指数',
+}
+
 const loading = ref(false)
 const symbols = ref([])
 const dateRange = ref([])
@@ -134,6 +154,8 @@ const dataTypes = ref([])
 const records = ref([])
 const priceSeries = ref([])
 const latestSummary = ref({})
+const benchmarkSummary = ref({})
+const primaryBenchmark = ref('')
 const runtime = ref({})
 const filters = ref({
   ts_code: '',
@@ -143,7 +165,7 @@ const dataTypesLabel = computed(() => {
   if (!dataTypes.value.length) {
     return '未配置数据类型'
   }
-  return dataTypes.value.join(' / ')
+  return dataTypes.value.map(item => datasetLabelMap[item] || item).join(' / ')
 })
 
 const chartOption = computed(() => ({
@@ -212,6 +234,17 @@ function formatPair(left, right) {
   return `${formatNumber(left)} / ${formatNumber(right)}`
 }
 
+function formatBenchmarkSnapshot(close, pctChg) {
+  if (close === null || close === undefined || close === '') {
+    return '--'
+  }
+  const closeText = formatNumber(close)
+  if (pctChg === null || pctChg === undefined || pctChg === '') {
+    return closeText
+  }
+  return `${closeText} / ${formatNumber(pctChg)}%`
+}
+
 async function loadOverview() {
   loading.value = true
   try {
@@ -226,6 +259,8 @@ async function loadOverview() {
     records.value = result.records || []
     priceSeries.value = result.price_series || []
     latestSummary.value = result.latest_summary || {}
+    benchmarkSummary.value = result.benchmark_summary || {}
+    primaryBenchmark.value = result.primary_benchmark || ''
     runtime.value = result.runtime || {}
 
     if (!filters.value.ts_code && result.ts_code) {
@@ -266,6 +301,16 @@ onMounted(loadOverview)
 
 .market-metric-grid {
   margin-top: 20px;
+}
+
+.metric-card--accent {
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.82), rgba(238, 246, 255, 0.68)),
+    radial-gradient(circle at top right, rgba(40, 112, 204, 0.14), transparent 56%);
+}
+
+.metric-value--compact {
+  font-size: 24px;
 }
 
 .market-grid {

@@ -12,7 +12,9 @@ tushare:
 
 market_data:
   symbols: "${MARKET_DATA_SYMBOLS:-000001.SZ,600519.SH,159915.SZ}"
-  data_types: "${MARKET_DATA_TYPES:-daily,daily_basic,moneyflow}"
+  data_types: "${MARKET_DATA_TYPES:-daily,daily_basic,moneyflow,index_daily}"
+  benchmark_index_codes: "${MARKET_DATA_BENCHMARK_INDEX_CODES:-000001.SH,399001.SZ,399006.SZ,000300.SH,000905.SH,000852.SH,000688.SH}"
+  primary_benchmark: "${MARKET_DATA_PRIMARY_BENCHMARK:-000300.SH}"
   fetch_interval: "${MARKET_DATA_FETCH_INTERVAL:-3600}"
   history_days: "${MARKET_DATA_HISTORY_DAYS:-30}"
   start_date: "${MARKET_DATA_START_DATE:-}"

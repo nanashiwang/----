@@ -77,6 +77,8 @@ class SettingsService:
                 ("tushare", "api_url", config.tushare.api_url, False),
                 ("market_data", "symbols", config.market_data.symbols, False),
                 ("market_data", "data_types", config.market_data.data_types, False),
+                ("market_data", "benchmark_index_codes", config.market_data.benchmark_index_codes, False),
+                ("market_data", "primary_benchmark", config.market_data.primary_benchmark, False),
                 ("market_data", "fetch_interval", str(config.market_data.fetch_interval), False),
                 ("market_data", "history_days", str(config.market_data.history_days), False),
                 ("market_data", "start_date", config.market_data.start_date, False),
