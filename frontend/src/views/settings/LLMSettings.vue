@@ -31,7 +31,12 @@
         </el-form-item>
 
         <el-form-item label="API Key">
-          <el-input v-model="form.api_key" type="password" show-password placeholder="sk-..." />
+          <el-input
+            v-model="form.api_key"
+            type="password"
+            show-password
+            :placeholder="apiKeyPlaceholder"
+          />
         </el-form-item>
 
         <el-form-item label="模型">
@@ -76,6 +81,7 @@ const form = ref({
 const saving = ref(false)
 const testing = ref(false)
 const testResult = ref(null)
+const apiKeyPlaceholder = ref('sk-...')
 
 function getErrorMessage(error, fallback) {
   return error?.response?.data?.detail || error?.response?.data?.message || error?.message || fallback
@@ -86,6 +92,17 @@ onMounted(async () => {
     const res = await getSettings('llm')
     for (const setting of res.settings) {
       if (!(setting.key in form.value)) continue
+
+      if (setting.key === 'api_key') {
+        if (setting.value && setting.value.includes('****')) {
+          apiKeyPlaceholder.value = `${setting.value}（已保存，如需更换请重新输入）`
+          form.value.api_key = ''
+        } else {
+          form.value.api_key = setting.value
+        }
+        continue
+      }
+
       form.value[setting.key] = setting.key === 'temperature'
         ? parseFloat(setting.value)
         : setting.value

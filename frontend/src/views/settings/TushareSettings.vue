@@ -19,7 +19,12 @@
 
       <el-form :model="form" label-width="120px" class="settings-form">
         <el-form-item label="Token">
-          <el-input v-model="form.token" type="password" show-password placeholder="Tushare Pro Token" />
+          <el-input
+            v-model="form.token"
+            type="password"
+            show-password
+            :placeholder="tokenPlaceholder"
+          />
         </el-form-item>
 
         <el-form-item>
@@ -50,6 +55,7 @@ const form = ref({ token: '' })
 const saving = ref(false)
 const testing = ref(false)
 const testResult = ref(null)
+const tokenPlaceholder = ref('Tushare Pro Token')
 
 function getErrorMessage(error, fallback) {
   return error?.response?.data?.detail || error?.response?.data?.message || error?.message || fallback
@@ -59,7 +65,14 @@ onMounted(async () => {
   try {
     const res = await getSettings('tushare')
     const setting = res.settings.find(item => item.key === 'token')
-    if (setting) form.value.token = setting.value
+    if (setting) {
+      if (setting.value && setting.value.includes('****')) {
+        tokenPlaceholder.value = `${setting.value}（已保存，如需更换请重新输入）`
+        form.value.token = ''
+      } else {
+        form.value.token = setting.value
+      }
+    }
   } catch {}
 })
 

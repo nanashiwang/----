@@ -29,6 +29,15 @@ def _should_use_responses_test(provider: str, model: str) -> bool:
     )
 
 
+def _resolve_secret_value(service: SettingsService, category: str, key: str, submitted_value: str) -> str:
+    value = (submitted_value or "").strip()
+    if value and "****" not in value:
+        return value
+
+    stored_value = service.get_raw_value(category, key)
+    return (stored_value or "").strip()
+
+
 def _test_responses_stream(api_base: str, api_key: str, model: str) -> dict:
     url = f"{_normalize_api_base(api_base)}/responses"
     payload = {
@@ -102,14 +111,19 @@ async def update_settings(category: str, data: SettingsUpdate, user=Depends(requ
 @router.post("/test-llm")
 async def test_llm(data: TestLLMRequest, _=Depends(require_admin)):
     try:
+        svc = _get_service()
+        api_key = _resolve_secret_value(svc, "llm", "api_key", data.api_key)
+        if not api_key:
+            return {"success": False, "message": "连接失败: 请先填写并保存有效的 API Key"}
+
         if _should_use_responses_test(data.provider, data.model):
-            return _test_responses_stream(data.api_base, data.api_key, data.model)
+            return _test_responses_stream(data.api_base, api_key, data.model)
 
         from src.llm.factory import LLMFactory
 
         llm = LLMFactory.create(
             data.provider,
-            api_key=data.api_key,
+            api_key=api_key,
             api_base=data.api_base,
             model=data.model,
         )
@@ -122,9 +136,14 @@ async def test_llm(data: TestLLMRequest, _=Depends(require_admin)):
 @router.post("/test-tushare")
 async def test_tushare(data: TestTushareRequest, _=Depends(require_admin)):
     try:
+        svc = _get_service()
+        token = _resolve_secret_value(svc, "tushare", "token", data.token)
+        if not token:
+            return {"success": False, "message": "连接失败: 请先填写并保存有效的 Tushare Token"}
+
         from src.data.sources.tushare_api import TushareAPI
 
-        api = TushareAPI(data.token)
+        api = TushareAPI(token)
         df = api.get_stock_basic()
         return {"success": True, "message": f"连接成功，共 {len(df)} 只股票"}
     except Exception as e:
