@@ -17,7 +17,15 @@
         <div class="aside-caption">Workspace</div>
 
         <div class="aside-nav">
-          <el-menu :default-active="route.path" class="side-menu" router unique-opened>
+          <el-menu
+            ref="menuRef"
+            :default-active="route.path"
+            :default-openeds="defaultOpenGroups"
+            class="side-menu"
+            router
+            @open="handleMenuOpen"
+            @close="handleMenuClose"
+          >
             <el-menu-item index="/">
               <el-icon><DataBoard /></el-icon>
               <div class="menu-copy">
@@ -103,15 +111,18 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ArrowDown, DataAnalysis, DataBoard, Setting, TrendCharts } from '@element-plus/icons-vue'
 
 import { useAuthStore } from '../stores/auth'
 
+const MENU_OPEN_GROUPS_STORAGE_KEY = 'quant-agent-open-menu-groups'
+
 const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
+const menuRef = ref(null)
 
 const navGroups = [
   {
@@ -147,6 +158,21 @@ const adminItems = [
   { path: '/users', label: '用户管理', desc: '管理登录账号与权限范围' },
 ]
 
+function getStoredOpenGroups() {
+  if (typeof window === 'undefined') {
+    return []
+  }
+  try {
+    const raw = window.localStorage.getItem(MENU_OPEN_GROUPS_STORAGE_KEY)
+    const parsed = raw ? JSON.parse(raw) : []
+    return Array.isArray(parsed) ? parsed.filter(item => typeof item === 'string') : []
+  } catch {
+    return []
+  }
+}
+
+const openMenuGroups = ref(getStoredOpenGroups())
+
 const routeMeta = {
   '/profile': { title: '个人中心', description: '维护当前账号的登录信息与密码，保证个人凭证始终可控。' },
   '/': { title: '指挥台', description: '把推荐、交易、知识和工作流状态汇聚到一个更清晰的主视图。' },
@@ -173,6 +199,35 @@ function resolveRouteMeta(path) {
   return routeMeta[path] || { title: 'QuantAgent', description: '现代化的多智能体量化交易控制界面。' }
 }
 
+const allMenuGroupIndexes = computed(() => {
+  const indexes = navGroups.map(group => group.index)
+  if (auth.isAdmin) {
+    indexes.push('admin')
+  }
+  return indexes
+})
+
+const currentRouteGroup = computed(() => {
+  for (const group of navGroups) {
+    if (group.items.some(item => item.path === route.path)) {
+      return group.index
+    }
+  }
+
+  if (auth.isAdmin && adminItems.some(item => item.path === route.path)) {
+    return 'admin'
+  }
+
+  return ''
+})
+
+const defaultOpenGroups = computed(() => {
+  return normalizeOpenGroups([
+    ...openMenuGroups.value,
+    ...(currentRouteGroup.value ? [currentRouteGroup.value] : []),
+  ])
+})
+
 const currentRouteMeta = computed(() => resolveRouteMeta(route.path))
 const userInitial = computed(() => (auth.user?.username || 'Q').slice(0, 1).toUpperCase())
 const todayLabel = new Intl.DateTimeFormat('zh-CN', {
@@ -180,6 +235,27 @@ const todayLabel = new Intl.DateTimeFormat('zh-CN', {
   day: 'numeric',
   weekday: 'long',
 }).format(new Date())
+
+function normalizeOpenGroups(groups) {
+  const validIndexes = new Set(allMenuGroupIndexes.value)
+  return Array.from(new Set(groups.filter(group => validIndexes.has(group))))
+}
+
+function persistOpenGroups(groups) {
+  const normalized = normalizeOpenGroups(groups)
+  openMenuGroups.value = normalized
+  if (typeof window !== 'undefined') {
+    window.localStorage.setItem(MENU_OPEN_GROUPS_STORAGE_KEY, JSON.stringify(normalized))
+  }
+}
+
+function handleMenuOpen(index) {
+  persistOpenGroups([...openMenuGroups.value, index])
+}
+
+function handleMenuClose(index) {
+  persistOpenGroups(openMenuGroups.value.filter(group => group !== index))
+}
 
 function handleCommand(command) {
   if (command === 'profile') {
@@ -191,11 +267,37 @@ function handleCommand(command) {
     router.push('/login')
   }
 }
+
+watch(
+  () => auth.isAdmin,
+  () => {
+    persistOpenGroups(openMenuGroups.value)
+  },
+  { immediate: true }
+)
+
+watch(
+  () => route.path,
+  async () => {
+    if (!currentRouteGroup.value) {
+      return
+    }
+
+    if (!openMenuGroups.value.includes(currentRouteGroup.value)) {
+      persistOpenGroups([...openMenuGroups.value, currentRouteGroup.value])
+    }
+
+    await nextTick()
+    menuRef.value?.open?.(currentRouteGroup.value)
+  },
+  { immediate: true }
+)
 </script>
 
 <style scoped>
 .app-frame {
   position: relative;
+  height: 100vh;
   min-height: 100vh;
   padding: 24px;
   overflow: hidden;
@@ -236,6 +338,7 @@ function handleCommand(command) {
 .layout-shell {
   position: relative;
   z-index: 1;
+  height: calc(100vh - 48px);
   min-height: calc(100vh - 48px);
   border-radius: 34px;
   overflow: hidden;
@@ -247,10 +350,15 @@ function handleCommand(command) {
 }
 
 .layout-aside {
+  position: sticky;
+  top: 0;
   display: flex;
   flex-direction: column;
   gap: 18px;
+  height: 100%;
+  min-height: 0;
   padding: 22px 18px;
+  overflow: hidden;
   background:
     linear-gradient(180deg, rgba(10, 24, 38, 0.84), rgba(16, 34, 52, 0.72)),
     rgba(12, 26, 41, 0.56);
@@ -328,6 +436,10 @@ function handleCommand(command) {
 }
 
 .layout-content {
+  min-width: 0;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
   background: transparent;
 }
 
@@ -336,6 +448,7 @@ function handleCommand(command) {
   align-items: center;
   justify-content: space-between;
   gap: 24px;
+  flex-shrink: 0;
   padding: 26px 30px 0;
   height: auto;
 }
@@ -415,7 +528,11 @@ function handleCommand(command) {
 }
 
 .layout-main {
+  flex: 1;
+  min-height: 0;
   padding: 28px 30px 30px;
+  overflow: auto;
+  overscroll-behavior: contain;
   background: transparent;
 }
 
@@ -442,6 +559,7 @@ function handleCommand(command) {
 
 :deep(.side-menu .el-sub-menu__title),
 :deep(.side-menu .el-menu-item) {
+  position: relative;
   height: auto;
   min-height: 52px;
   line-height: 1.25;
@@ -459,10 +577,47 @@ function handleCommand(command) {
   transform: translateX(2px);
 }
 
+:deep(.side-menu .el-sub-menu.is-active > .el-sub-menu__title) {
+  background: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
 :deep(.side-menu .el-menu-item.is-active) {
+  border: 1px solid rgba(255, 255, 255, 0.16);
   background: linear-gradient(135deg, rgba(30, 124, 242, 0.9), rgba(43, 195, 177, 0.88));
   color: #ffffff;
-  box-shadow: 0 16px 28px rgba(30, 124, 242, 0.28);
+  box-shadow:
+    0 18px 34px rgba(30, 124, 242, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.18);
+  transform: translateX(4px);
+}
+
+:deep(.side-menu .el-menu-item.is-active::before) {
+  content: '';
+  position: absolute;
+  left: 9px;
+  top: 50%;
+  width: 6px;
+  height: 26px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.95);
+  transform: translateY(-50%);
+}
+
+:deep(.side-menu .el-menu-item.is-active .menu-copy) {
+  padding-left: 10px;
+}
+
+:deep(.side-menu .el-menu-item.is-active .menu-copy span) {
+  color: #ffffff;
+  font-weight: 800;
+}
+
+:deep(.side-menu .el-menu-item.is-active .menu-copy small) {
+  color: rgba(255, 255, 255, 0.82);
+  opacity: 1;
 }
 
 :deep(.side-menu .el-sub-menu .el-menu) {
@@ -489,14 +644,28 @@ function handleCommand(command) {
 }
 
 @media (max-width: 960px) {
+  .app-frame {
+    height: auto;
+    overflow: visible;
+  }
+
   .layout-shell {
     flex-direction: column;
+    height: auto;
   }
 
   .layout-aside {
+    position: static;
     width: 100% !important;
+    height: auto;
     border-right: none;
     border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  }
+
+  .layout-content,
+  .layout-main {
+    height: auto;
+    overflow: visible;
   }
 
   .layout-header {
