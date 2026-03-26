@@ -10,11 +10,11 @@
           <div class="brand-mark">QA</div>
           <div class="brand-copy">
             <h2>QuantAgent</h2>
-            <p>量化交易协同控制台</p>
+            <p>?????????</p>
           </div>
         </div>
 
-        <div class="aside-caption">Workspace</div>
+        <div class="aside-caption">Workspace Map</div>
 
         <div class="aside-nav">
           <el-menu
@@ -26,18 +26,14 @@
             @open="handleMenuOpen"
             @close="handleMenuClose"
           >
-            <el-menu-item index="/">
-              <el-icon><DataBoard /></el-icon>
-              <div class="menu-copy">
-                <span>指挥台</span>
-                <small>系统概览与工作流入口</small>
-              </div>
-            </el-menu-item>
-
             <el-sub-menu v-for="group in navGroups" :key="group.index" :index="group.index">
               <template #title>
                 <el-icon><component :is="group.icon" /></el-icon>
-                <span>{{ group.title }}</span>
+                <div class="group-copy">
+                  <span>{{ group.title }}</span>
+                  <small>{{ group.hint }}</small>
+                </div>
+                <span class="group-count">{{ group.items.length }}</span>
               </template>
               <el-menu-item v-for="item in group.items" :key="item.path" :index="item.path">
                 <div class="menu-copy">
@@ -50,7 +46,11 @@
             <el-sub-menu v-if="auth.isAdmin" index="admin">
               <template #title>
                 <el-icon><Setting /></el-icon>
-                <span>系统管理</span>
+                <div class="group-copy">
+                  <span>????</span>
+                  <small>??????????</small>
+                </div>
+                <span class="group-count">{{ adminItems.length }}</span>
               </template>
               <el-menu-item v-for="item in adminItems" :key="item.path" :index="item.path">
                 <div class="menu-copy">
@@ -61,7 +61,6 @@
             </el-sub-menu>
           </el-menu>
         </div>
-
       </el-aside>
 
       <el-container class="layout-content">
@@ -74,7 +73,7 @@
 
           <div class="header-tools">
             <div class="header-pill glass-surface">
-              <span>今日节奏</span>
+              <span>????</span>
               <strong>{{ todayLabel }}</strong>
             </div>
 
@@ -83,14 +82,14 @@
                 <div class="account-avatar">{{ userInitial }}</div>
                 <div class="account-copy">
                   <strong>{{ auth.user?.username || 'Guest' }}</strong>
-                  <small>{{ auth.isAdmin ? '拥有系统管理权限' : '浏览与执行权限' }}</small>
+                  <small>{{ auth.isAdmin ? '????????' : '???????' }}</small>
                 </div>
                 <el-icon><ArrowDown /></el-icon>
               </div>
               <template #dropdown>
                 <el-dropdown-menu>
-                  <el-dropdown-item command="profile">个人中心</el-dropdown-item>
-                  <el-dropdown-item command="logout">退出登录</el-dropdown-item>
+                  <el-dropdown-item command="profile">????</el-dropdown-item>
+                  <el-dropdown-item command="logout">????</el-dropdown-item>
                 </el-dropdown-menu>
               </template>
             </el-dropdown>
@@ -98,7 +97,14 @@
         </el-header>
 
         <el-main class="layout-main">
-          <router-view />
+          <router-view v-slot="{ Component, route: viewRoute }">
+            <keep-alive :include="keepAliveRouteNames">
+              <component
+                :is="Component"
+                :key="viewRoute.meta.keepAlive ? String(viewRoute.name || viewRoute.path) : viewRoute.fullPath"
+              />
+            </keep-alive>
+          </router-view>
         </el-main>
       </el-container>
     </el-container>
@@ -108,7 +114,16 @@
 <script setup>
 import { computed, nextTick, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ArrowDown, DataAnalysis, DataBoard, Setting, TrendCharts } from '@element-plus/icons-vue'
+import {
+  ArrowDown,
+  CollectionTag,
+  DataAnalysis,
+  DataBoard,
+  Monitor,
+  Operation,
+  Setting,
+  TrendCharts,
+} from '@element-plus/icons-vue'
 
 import { useAuthStore } from '../stores/auth'
 
@@ -121,38 +136,74 @@ const menuRef = ref(null)
 
 const navGroups = [
   {
-    index: 'trade',
-    title: '交易中心',
-    icon: TrendCharts,
+    index: 'overview',
+    title: '????',
+    hint: '??????????????',
+    icon: DataBoard,
     items: [
-      { path: '/recommend', label: '推荐看板', desc: '查看策略输出与权重分布' },
-      { path: '/trades', label: '交易记录', desc: '录入与回看真实成交' },
-      { path: '/backtest', label: '回测系统', desc: '检验策略在历史区间的表现' },
+      { path: '/', label: '???', desc: '???????????????' },
+      { path: '/profile', label: '????', desc: '????????????????' },
     ],
   },
   {
-    index: 'analysis',
-    title: '分析复盘',
+    index: 'execution',
+    title: '????',
+    hint: '??????????????',
+    icon: TrendCharts,
+    items: [
+      { path: '/recommend', label: '????', desc: '?????????????' },
+      { path: '/trades', label: '????', desc: '????????????' },
+    ],
+  },
+  {
+    index: 'validation',
+    title: '????',
+    hint: '??????????????',
     icon: DataAnalysis,
     items: [
-      { path: '/review', label: '复盘分析', desc: '沉淀正确与错误决策样本' },
-      { path: '/ml', label: '机器学习实验', desc: '配置特征、标签、模型与调优并输出预测结果' },
-      { path: '/market/data', label: '行情数据中心', desc: '查看股票池同步结果、趋势图和指标表格' },
-      { path: '/news/articles', label: '资讯列表', desc: '查看自动采集入库的新闻、公告与宏观资讯' },
-      { path: '/news/briefs', label: '每日简报', desc: '集中查看系统生成的日度资讯摘要' },
-      { path: '/knowledge', label: '知识库', desc: '维护热知识与冷知识资产' },
+      { path: '/backtest', label: '????', desc: '?????????????' },
+      { path: '/review', label: '????', desc: '???????????' },
+    ],
+  },
+  {
+    index: 'research',
+    title: '????',
+    hint: '????????????',
+    icon: Operation,
+    items: [
+      { path: '/ml', label: '??????', desc: '???????????????' },
+    ],
+  },
+  {
+    index: 'intelligence',
+    title: '????',
+    hint: '??????????????',
+    icon: Monitor,
+    items: [
+      { path: '/market/data', label: '??????', desc: '??????????????????' },
+      { path: '/news/articles', label: '????', desc: '???????????????????' },
+      { path: '/news/briefs', label: '????', desc: '???????????????' },
+    ],
+  },
+  {
+    index: 'knowledge',
+    title: '????',
+    hint: '?????????????',
+    icon: CollectionTag,
+    items: [
+      { path: '/knowledge', label: '???', desc: '??????????????' },
     ],
   },
 ]
 
 const adminItems = [
-  { path: '/settings/llm', label: 'LLM 配置', desc: '模型接入、Key 与验证' },
-  { path: '/settings/tushare', label: 'Tushare 配置', desc: '行情数据授权与检查' },
-  { path: '/settings/database', label: '数据库配置', desc: '查看当前数据源连接信息' },
-  { path: '/agents', label: 'Agent 管理', desc: '控制各智能体角色与启停' },
-  { path: '/sources', label: '资讯源管理', desc: '维护新闻与情报采集源' },
-  { path: '/users', label: '用户管理', desc: '管理登录账号与权限范围' },
-  { path: '/admin/logs', label: '使用日志', desc: '查看用户采用的方法、实验次数与收益指标' },
+  { path: '/settings/llm', label: 'LLM ??', desc: '?????Key ??????' },
+  { path: '/settings/tushare', label: 'Tushare ??', desc: '?????????' },
+  { path: '/settings/database', label: '?????', desc: '????????????' },
+  { path: '/agents', label: 'Agent ??', desc: '????????????????' },
+  { path: '/sources', label: '?????', desc: '??????????' },
+  { path: '/users', label: '????', desc: '???????????' },
+  { path: '/admin/logs', label: '????', desc: '????????????' },
 ]
 
 function getStoredOpenGroups() {
@@ -169,33 +220,39 @@ function getStoredOpenGroups() {
 }
 
 const openMenuGroups = ref(getStoredOpenGroups())
+const keepAliveRouteNames = computed(() =>
+  router
+    .getRoutes()
+    .filter(item => item.meta?.keepAlive && typeof item.name === 'string')
+    .map(item => item.name)
+)
 
 const routeMeta = {
-  '/profile': { title: '个人中心', description: '维护当前账号的登录信息与密码，保证个人凭证始终可控。' },
-  '/': { title: '指挥台', description: '把推荐、交易、知识和工作流状态汇聚到一个更清晰的主视图。' },
-  '/recommend': { title: '推荐看板', description: '用更直观的方式查看策略结果、权重变化与当日推荐。' },
-  '/trades': { title: '交易记录', description: '跟踪真实交易数据，并把执行动作沉淀为可追溯的记录。' },
-  '/backtest': { title: '回测系统', description: '快速验证参数区间，帮助策略在上线前更早暴露风险。' },
-  '/review': { title: '复盘分析', description: '把正确与错误案例聚合起来，形成更高质量的经验闭环。' },
-  '/ml': { title: '机器学习实验', description: '在同一页里选择自变量、因变量、模型与调优方式，并输出预测结果。' },
-  '/market/data': { title: '行情数据中心', description: '集中查看自定义股票池的行情、基础指标和资金流向，兼顾趋势图与明细表。' },
-  '/news/articles': { title: '资讯列表', description: '汇总自动采集入库的公告、监管、宏观和快讯内容，方便统一检索。' },
-  '/news/briefs': { title: '每日简报', description: '按日查看系统生成的资讯摘要，快速把握今日重要事件。' },
-  '/knowledge': { title: '知识库', description: '管理模型沉淀出的高价值知识，让判断依据持续积累。' },
-  '/settings/llm': { title: 'LLM 配置', description: '集中维护模型供应商、网关地址与调用连通性。' },
-  '/settings/tushare': { title: 'Tushare 配置', description: '检查行情数据接入状态，保证策略输入稳定。' },
-  '/settings/database': { title: '数据库配置', description: '查看应用当前使用的存储链路与配置来源。' },
-  '/agents': { title: 'Agent 管理', description: '统一管理多智能体的提示词、模型配置与启停状态。' },
-  '/sources': { title: '资讯源管理', description: '维护新闻采集源，让观察层输入更加稳定可靠。' },
-  '/users': { title: '用户管理', description: '维护账号、角色与系统访问边界。' },
-  '/admin/logs': { title: '使用日志', description: '只有管理员可查看的实验与回测日志，帮助识别更稳定的方法与因子方向。' },
+  '/profile': { title: '????', description: '??????????????????????????' },
+  '/': { title: '???', description: '????????????????????????????' },
+  '/recommend': { title: '????', description: '????????????????????????' },
+  '/trades': { title: '????', description: '?????????????????????????' },
+  '/backtest': { title: '????', description: '????????????????????????' },
+  '/review': { title: '????', description: '?????????????????????????' },
+  '/ml': { title: '??????', description: '???????????????????????????????' },
+  '/market/data': { title: '??????', description: '??????????????????????????????????' },
+  '/news/articles': { title: '????', description: '??????????????????????????????' },
+  '/news/briefs': { title: '????', description: '?????????????????????????' },
+  '/knowledge': { title: '???', description: '????????????????????????' },
+  '/settings/llm': { title: 'LLM ??', description: '?????????????????????' },
+  '/settings/tushare': { title: 'Tushare ??', description: '????????????????????' },
+  '/settings/database': { title: '?????', description: '???????????????????' },
+  '/agents': { title: 'Agent ??', description: '???????????????????????' },
+  '/sources': { title: '?????', description: '?????????????????????' },
+  '/users': { title: '????', description: '???????????????' },
+  '/admin/logs': { title: '????', description: '??????????????????????????' },
 }
 
 function resolveRouteMeta(path) {
   if (path.startsWith('/agents/')) {
-    return { title: 'Agent 详情', description: '编辑单个智能体的角色配置与行为策略。' }
+    return { title: 'Agent ??', description: '??????????????????' }
   }
-  return routeMeta[path] || { title: 'QuantAgent', description: '现代化的多智能体量化交易控制界面。' }
+  return routeMeta[path] || { title: 'QuantAgent', description: '?????????????????' }
 }
 
 const allMenuGroupIndexes = computed(() => {
@@ -206,14 +263,24 @@ const allMenuGroupIndexes = computed(() => {
   return indexes
 })
 
+function isMenuItemActive(itemPath, currentPath) {
+  if (itemPath === currentPath) {
+    return true
+  }
+  if (itemPath === '/') {
+    return currentPath === '/'
+  }
+  return currentPath.startsWith(`${itemPath}/`)
+}
+
 const currentRouteGroup = computed(() => {
   for (const group of navGroups) {
-    if (group.items.some(item => item.path === route.path)) {
+    if (group.items.some(item => isMenuItemActive(item.path, route.path))) {
       return group.index
     }
   }
 
-  if (auth.isAdmin && adminItems.some(item => item.path === route.path)) {
+  if (auth.isAdmin && adminItems.some(item => isMenuItemActive(item.path, route.path))) {
     return 'admin'
   }
 
@@ -563,20 +630,39 @@ watch(
   background: transparent;
 }
 
+.group-copy,
 .menu-copy {
   display: flex;
   flex-direction: column;
   gap: 4px;
+  min-width: 0;
 }
 
+.group-copy span,
 .menu-copy span {
   font-weight: 700;
 }
 
+.group-copy small,
 .menu-copy small {
   color: inherit;
-  opacity: 0.6;
+  opacity: 0.62;
   font-size: 12px;
+}
+
+.group-count {
+  margin-left: auto;
+  min-width: 26px;
+  height: 26px;
+  padding: 0 8px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(245, 249, 255, 0.72);
+  font-size: 11px;
+  font-weight: 700;
 }
 
 :deep(.side-menu) {
@@ -587,10 +673,13 @@ watch(
 :deep(.side-menu .el-sub-menu__title),
 :deep(.side-menu .el-menu-item) {
   position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
   height: auto;
-  min-height: 54px;
+  min-height: 60px;
   line-height: 1.3;
-  margin-bottom: 6px;
+  margin-bottom: 8px;
   padding: 16px 18px !important;
   border-radius: var(--radius-lg);
   color: rgba(245, 249, 255, 0.85);
@@ -609,6 +698,11 @@ watch(
   color: #ffffff;
   border: 1.5px solid rgba(255, 255, 255, 0.14);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+
+:deep(.side-menu .el-sub-menu.is-active > .el-sub-menu__title .group-count) {
+  background: rgba(255, 255, 255, 0.16);
+  color: rgba(255, 255, 255, 0.95);
 }
 
 :deep(.side-menu .el-menu-item.is-active) {
