@@ -113,6 +113,51 @@ database:
 - [ ] 行动集群
 - [ ] 复盘集群
 
+## Run-Centric 重构骨架
+
+仓库中已经新增一套面向工程化重构的并行骨架，核心目标是把 `observe / reason / act / review` 四条工作流统一纳入 `run_id` 体系，满足以下要求：
+
+- 可复现：记录 `prompt_version / agent_version / feature_set_version / model_version`
+- 可回测：推荐、预测产物、交易和复盘结果都可按 `run_id` 追溯
+- 可解释：推荐结果必须保留 `evidence_refs / evidence_json`
+- 可审计：节点执行日志统一写入 `agent_node_runs`
+- 可版本化演化：新架构与旧 `backend/frontend/src` 并行，不阻断现有系统
+
+新增目录包括：
+
+```text
+apps/
+core/
+domain/
+infrastructure/
+workflows/
+agents/
+ml/
+backtest/
+memory/
+migrations/
+tests/architecture/
+```
+
+新的 FastAPI 入口：
+
+```bash
+uvicorn apps.api.app:app --reload
+```
+
+新的 Worker 入口：
+
+```bash
+celery -A apps.worker.celery_app.celery_app worker -l info
+```
+
+详细设计说明请查看：
+
+- `ARCHITECTURE.md`
+- `apps/api/`
+- `workflows/`
+- `infrastructure/db/postgres/models.py`
+
 ## 免责声明
 
 本系统仅供学习研究使用，不构成任何投资建议。股市有风险，投资需谨慎。

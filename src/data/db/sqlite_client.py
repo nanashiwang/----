@@ -4,6 +4,24 @@ from pathlib import Path
 
 
 class SQLiteClient:
+    LEGACY_NEWS_ARTICLES_TABLE = "legacy_news_articles"
+    LEGACY_RECOMMENDATIONS_TABLE = "legacy_recommendations"
+    LEGACY_TRADES_TABLE = "legacy_trades"
+
+    # Run-centric tables are managed only by Alembic migrations.
+    # Do not add them back into this legacy initializer.
+    RUN_CENTRIC_TABLES = {
+        "workflow_runs",
+        "agent_node_runs",
+        "news_articles",
+        "daily_briefs",
+        "feature_snapshots",
+        "prediction_artifacts",
+        "recommendations",
+        "trades",
+        "review_reports",
+    }
+
     def __init__(self, db_path: str):
         self.db_path = Path(db_path)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
@@ -11,6 +29,7 @@ class SQLiteClient:
 
     def _init_tables(self):
         with self.get_connection() as conn:
+            # Legacy SQLite schema only. Run-centric tables must be created by Alembic.
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS event_briefs (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -36,8 +55,9 @@ class SQLiteClient:
                 )
             """)
 
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS recommendations (
+            conn.execute(
+                f"""
+                CREATE TABLE IF NOT EXISTS {self.LEGACY_RECOMMENDATIONS_TABLE} (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     date DATE NOT NULL,
                     ts_code VARCHAR(10) NOT NULL,
@@ -46,10 +66,12 @@ class SQLiteClient:
                     agents_vote TEXT,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
-            """)
+                """
+            )
 
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS trades (
+            conn.execute(
+                f"""
+                CREATE TABLE IF NOT EXISTS {self.LEGACY_TRADES_TABLE} (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     ts_code VARCHAR(10) NOT NULL,
                     trade_date DATE NOT NULL,
@@ -59,7 +81,8 @@ class SQLiteClient:
                     profit_loss REAL,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
-            """)
+                """
+            )
 
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS reviews (
@@ -151,8 +174,9 @@ class SQLiteClient:
                 )
             """)
 
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS news_articles (
+            conn.execute(
+                f"""
+                CREATE TABLE IF NOT EXISTS {self.LEGACY_NEWS_ARTICLES_TABLE} (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     source_id INTEGER REFERENCES news_sources(id),
                     title TEXT NOT NULL,
@@ -167,7 +191,8 @@ class SQLiteClient:
                     raw_payload TEXT,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
-            """)
+                """
+            )
 
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS market_data_snapshots (
@@ -207,22 +232,30 @@ class SQLiteClient:
             self._ensure_column(conn, "news_sources", "priority", "REAL DEFAULT 0.5")
             self._ensure_column(conn, "news_sources", "credibility", "REAL DEFAULT 0.5")
 
-            conn.execute("""
-                CREATE UNIQUE INDEX IF NOT EXISTS idx_news_articles_unique_hash
-                ON news_articles(content_hash)
-            """)
-            conn.execute("""
-                CREATE UNIQUE INDEX IF NOT EXISTS idx_news_articles_unique_url
-                ON news_articles(url) WHERE url IS NOT NULL AND url != ''
-            """)
-            conn.execute("""
-                CREATE INDEX IF NOT EXISTS idx_news_articles_published_at
-                ON news_articles(published_at DESC)
-            """)
-            conn.execute("""
-                CREATE INDEX IF NOT EXISTS idx_news_articles_source_published
-                ON news_articles(source_id, published_at DESC)
-            """)
+            conn.execute(
+                f"""
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_{self.LEGACY_NEWS_ARTICLES_TABLE}_unique_hash
+                ON {self.LEGACY_NEWS_ARTICLES_TABLE}(content_hash)
+                """
+            )
+            conn.execute(
+                f"""
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_{self.LEGACY_NEWS_ARTICLES_TABLE}_unique_url
+                ON {self.LEGACY_NEWS_ARTICLES_TABLE}(url) WHERE url IS NOT NULL AND url != ''
+                """
+            )
+            conn.execute(
+                f"""
+                CREATE INDEX IF NOT EXISTS idx_{self.LEGACY_NEWS_ARTICLES_TABLE}_published_at
+                ON {self.LEGACY_NEWS_ARTICLES_TABLE}(published_at DESC)
+                """
+            )
+            conn.execute(
+                f"""
+                CREATE INDEX IF NOT EXISTS idx_{self.LEGACY_NEWS_ARTICLES_TABLE}_source_published
+                ON {self.LEGACY_NEWS_ARTICLES_TABLE}(source_id, published_at DESC)
+                """
+            )
             conn.execute("""
                 CREATE INDEX IF NOT EXISTS idx_event_briefs_date_source
                 ON event_briefs(date DESC, source)
@@ -261,6 +294,11 @@ class SQLiteClient:
         }
         if column not in columns:
             conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
+
+    def list_tables(self) -> list[str]:
+        with self.get_connection() as conn:
+            rows = conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
+        return sorted(row[0] for row in rows)
 
     @contextmanager
     def get_connection(self):

@@ -79,6 +79,7 @@ class NewsService:
         self.db = db
         self.sources = SourceService(db)
         self.settings = SettingsService(db)
+        self.article_table = db.LEGACY_NEWS_ARTICLES_TABLE
 
     def list_articles(
         self,
@@ -97,10 +98,10 @@ class NewsService:
                 ns.category AS source_category,
                 ns.priority AS source_priority,
                 ns.credibility AS source_credibility
-            FROM news_articles na
+            FROM {article_table} na
             LEFT JOIN news_sources ns ON ns.id = na.source_id
             WHERE 1 = 1
-        """
+        """.format(article_table=self.article_table)
         values: List = []
 
         if keyword:
@@ -199,8 +200,8 @@ class NewsService:
             for article in articles:
                 try:
                     conn.execute(
-                        """
-                        INSERT INTO news_articles (
+                        f"""
+                        INSERT INTO {self.article_table} (
                             source_id, title, summary, content, url, published_at,
                             content_hash, symbols, tags, importance, raw_payload
                         )
@@ -238,12 +239,12 @@ class NewsService:
                     na.published_at,
                     ns.name AS source_name,
                     ns.category AS source_category
-                FROM news_articles na
+                FROM {article_table} na
                 LEFT JOIN news_sources ns ON ns.id = na.source_id
                 WHERE date(COALESCE(na.published_at, na.created_at)) = ?
                 ORDER BY na.importance DESC, COALESCE(na.published_at, na.created_at) DESC
                 LIMIT 12
-                """,
+                """.format(article_table=self.article_table),
                 (date_str,),
             ).fetchall()
 

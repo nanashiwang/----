@@ -16,7 +16,7 @@ class BacktestEngine:
         """加载推荐记录"""
         with self.db.get_connection() as conn:
             return pd.read_sql(
-                "SELECT * FROM recommendations WHERE date BETWEEN ? AND ?",
+                f"SELECT * FROM {self.db.LEGACY_RECOMMENDATIONS_TABLE} WHERE date BETWEEN ? AND ?",
                 conn, params=(start_date, end_date)
             )
 

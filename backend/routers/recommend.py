@@ -15,15 +15,16 @@ async def list_recommendations(
 ):
     from ..app import get_sqlite_client
     db = get_sqlite_client()
+    table_name = db.LEGACY_RECOMMENDATIONS_TABLE
     with db.get_connection() as conn:
         if date:
             df = pd.read_sql(
-                "SELECT * FROM recommendations WHERE date = ? ORDER BY weight DESC LIMIT ?",
+                f"SELECT * FROM {table_name} WHERE date = ? ORDER BY weight DESC LIMIT ?",
                 conn, params=(date, limit)
             )
         else:
             df = pd.read_sql(
-                "SELECT * FROM recommendations ORDER BY created_at DESC LIMIT ?",
+                f"SELECT * FROM {table_name} ORDER BY created_at DESC LIMIT ?",
                 conn, params=(limit,)
             )
     return df.to_dict("records") if not df.empty else []
@@ -35,6 +36,6 @@ async def list_dates(_=Depends(get_current_user)):
     db = get_sqlite_client()
     with db.get_connection() as conn:
         rows = conn.execute(
-            "SELECT DISTINCT date FROM recommendations ORDER BY date DESC LIMIT 30"
+            f"SELECT DISTINCT date FROM {db.LEGACY_RECOMMENDATIONS_TABLE} ORDER BY date DESC LIMIT 30"
         ).fetchall()
     return [r["date"] for r in rows]

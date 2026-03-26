@@ -21,7 +21,7 @@ class RetrospectAgent:
         with self.db.get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute(
-                "SELECT * FROM recommendations WHERE date = ?", (date,)
+                f"SELECT * FROM {self.db.LEGACY_RECOMMENDATIONS_TABLE} WHERE date = ?", (date,)
             )
             return [dict(row) for row in cursor.fetchall()]
 

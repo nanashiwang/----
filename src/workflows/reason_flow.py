@@ -62,8 +62,8 @@ def create_reason_workflow(screener: NewsScreener, llm, sqlite_client: SQLiteCli
 
         with sqlite_client.get_connection() as conn:
             for pick in state["final_picks"]:
-                conn.execute("""
-                    INSERT INTO recommendations (date, ts_code, weight, reason, agents_vote)
+                conn.execute(f"""
+                    INSERT INTO {sqlite_client.LEGACY_RECOMMENDATIONS_TABLE} (date, ts_code, weight, reason, agents_vote)
                     VALUES (?, ?, ?, ?, ?)
                 """, (
                     datetime.now().strftime("%Y-%m-%d"),

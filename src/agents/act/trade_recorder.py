@@ -37,8 +37,8 @@ class TradeRecorder:
     def save_trade(self, trade_data: Dict):
         """保存交易记录"""
         with self.db.get_connection() as conn:
-            conn.execute("""
-                INSERT INTO trades (ts_code, trade_date, action, price, volume)
+            conn.execute(f"""
+                INSERT INTO {self.db.LEGACY_TRADES_TABLE} (ts_code, trade_date, action, price, volume)
                 VALUES (?, ?, ?, ?, ?)
             """, (
                 trade_data["ts_code"],

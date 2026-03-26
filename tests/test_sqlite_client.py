@@ -1,63 +1,67 @@
-import unittest
+import os
 import sys
+import tempfile
+import unittest
 from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.data.db.sqlite_client import SQLiteClient
-import tempfile
-import os
 
 
 class TestSQLiteClient(unittest.TestCase):
-    """测试SQLite客户端"""
-
     def setUp(self):
-        self.temp_db = tempfile.NamedTemporaryFile(delete=False, suffix='.db')
+        self.temp_db = tempfile.NamedTemporaryFile(delete=False, suffix=".db")
         self.temp_db.close()
         self.client = SQLiteClient(self.temp_db.name)
 
     def tearDown(self):
         os.unlink(self.temp_db.name)
 
-    def test_tables_created(self):
-        """测试表是否创建"""
+    def test_legacy_tables_created_without_run_centric_tables(self):
+        tables = set(self.client.list_tables())
+
+        self.assertIn("event_briefs", tables)
+        self.assertIn("stock_data", tables)
+        self.assertIn("reviews", tables)
+        self.assertIn("users", tables)
+        self.assertIn("news_sources", tables)
+        self.assertIn("market_data_snapshots", tables)
+        self.assertIn(SQLiteClient.LEGACY_NEWS_ARTICLES_TABLE, tables)
+        self.assertIn(SQLiteClient.LEGACY_RECOMMENDATIONS_TABLE, tables)
+        self.assertIn(SQLiteClient.LEGACY_TRADES_TABLE, tables)
+
+        for table_name in SQLiteClient.RUN_CENTRIC_TABLES:
+            self.assertNotIn(table_name, tables)
+
         with self.client.get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
-            tables = [row[0] for row in cursor.fetchall()]
-
-            self.assertIn('event_briefs', tables)
-            self.assertIn('stock_data', tables)
-            self.assertIn('recommendations', tables)
-            self.assertIn('trades', tables)
-            self.assertIn('reviews', tables)
-            self.assertIn('news_sources', tables)
-            self.assertIn('news_articles', tables)
-
             source_columns = {
-                row['name']
+                row["name"]
                 for row in conn.execute("PRAGMA table_info(news_sources)").fetchall()
             }
-            self.assertIn('priority', source_columns)
-            self.assertIn('credibility', source_columns)
+        self.assertIn("priority", source_columns)
+        self.assertIn("credibility", source_columns)
 
-    def test_insert_recommendation(self):
-        """测试插入推荐"""
+    def test_legacy_tables_still_support_write_paths(self):
         with self.client.get_connection() as conn:
-            conn.execute("""
-                INSERT INTO recommendations (date, ts_code, weight, reason)
+            conn.execute(
+                """
+                INSERT INTO reviews (date, ts_code, analysis, lessons)
                 VALUES (?, ?, ?, ?)
-            """, ('2024-03-19', '600519.SH', 0.8, '测试理由'))
+                """,
+                ("2024-03-19", "600519.SH", "legacy analysis", "legacy lesson"),
+            )
             conn.commit()
 
-            cursor = conn.cursor()
-            cursor.execute("SELECT * FROM recommendations WHERE ts_code = ?", ('600519.SH',))
-            row = cursor.fetchone()
+            row = conn.execute(
+                "SELECT * FROM reviews WHERE ts_code = ?",
+                ("600519.SH",),
+            ).fetchone()
 
-            self.assertIsNotNone(row)
-            self.assertEqual(row['ts_code'], '600519.SH')
-            self.assertEqual(row['weight'], 0.8)
+        self.assertIsNotNone(row)
+        self.assertEqual(row["ts_code"], "600519.SH")
+        self.assertEqual(row["analysis"], "legacy analysis")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()

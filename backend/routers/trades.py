@@ -25,7 +25,7 @@ async def list_trades(
     db = get_sqlite_client()
     with db.get_connection() as conn:
         rows = conn.execute(
-            "SELECT * FROM trades ORDER BY trade_date DESC, id DESC LIMIT ?", (limit,)
+            f"SELECT * FROM {db.LEGACY_TRADES_TABLE} ORDER BY trade_date DESC, id DESC LIMIT ?", (limit,)
         ).fetchall()
     return [dict(r) for r in rows]
 
@@ -35,8 +35,8 @@ async def create_trade(data: TradeCreate, _=Depends(get_current_user)):
     from ..app import get_sqlite_client
     db = get_sqlite_client()
     with db.get_connection() as conn:
-        cursor = conn.execute("""
-            INSERT INTO trades (ts_code, trade_date, action, price, volume, profit_loss)
+        cursor = conn.execute(f"""
+            INSERT INTO {db.LEGACY_TRADES_TABLE} (ts_code, trade_date, action, price, volume, profit_loss)
             VALUES (?, ?, ?, ?, ?, ?)
         """, (data.ts_code, data.trade_date, data.action, data.price, data.volume, data.profit_loss))
         conn.commit()
